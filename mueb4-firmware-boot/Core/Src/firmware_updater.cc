@@ -127,7 +127,7 @@ restart_update:
 
   firmware_update_timeout = 0u;  // Start timeout measurement
   while (true) {
-    if (firmware_update_timeout == 3u) {
+    if (firmware_update_timeout == 10u) {
       HAL_NVIC_SystemReset();
     }
 

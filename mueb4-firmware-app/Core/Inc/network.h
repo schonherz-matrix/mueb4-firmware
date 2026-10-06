@@ -51,6 +51,9 @@ class Network final {
   /// EEPROM I2C device address.
   static constexpr std::uint8_t kEepromAddress{0b10100001u};
 
+  /// Firmware update magic number
+  static constexpr std::uint32_t kFirmwareUpdateMagic{0xA53C91E7u};
+
   /// DHCP socket number.
   static constexpr std::uint8_t kDhcpSocket{0u};
 

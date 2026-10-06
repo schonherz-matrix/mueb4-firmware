@@ -34,7 +34,7 @@ extern std::uint32_t _siisr_vector[];
 extern std::uint32_t _main_program_size[];
 
 extern "C" {
-std::uint8_t firmware_update_enabler
+volatile std::uint32_t firmware_update_enabler
     __attribute__((section(".firmware_update_enabler")));
 
 static void CIpAssign() { Network::Instance().IpAssign(); }
@@ -562,7 +562,7 @@ void Network::HandleCommandProtocol() {
       HAL_NVIC_SystemReset();
       break;
     case Command::kStartFirmwareUpdate: {
-      firmware_update_enabler = 0xABu;
+      firmware_update_enabler = kFirmwareUpdateMagic;
 
       HAL_NVIC_SystemReset();
       break;

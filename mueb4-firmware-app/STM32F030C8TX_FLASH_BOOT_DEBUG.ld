@@ -66,13 +66,13 @@ SECTIONS
     _eisr_vector = .;        /* define a global symbol at data end */
   } >RAM1 AT> FLASH
   
-  /* The firmware updater enabler into "FLASH" Rom type memory */
-  .firmware_update_enabler :
+  /* Reserved RAM shared between APP and BOOT */
+  .firmware_update_enabler (NOLOAD) :
   {
-    . = ALIGN(4);  
+    . = ALIGN(4);
     KEEP(*(.firmware_update_enabler))
     . = ALIGN(4);
-  } >RAM1 AT> FLASH
+  } >RAM1
 
   /* The program code and other data into "FLASH" Rom type memory */
   .text :
