@@ -252,14 +252,14 @@ auto Network::CheckIpAddress(const std::uint8_t &socket_number) {
   };
   Return ret;
 
-  ret.size = recvfrom(socket_number, ret.buffer.data(),
-                      static_cast<std::uint16_t>(ret.buffer.size()),
+  ret.size = recvfrom(socket_number, ret.buffer.data(), ret.buffer.size(),
                       ret.server_address.data(), &ret.server_port);
-  if (ret.size < 0 ||
-      (!std::equal(std::begin(wiz_net_info_.gw), std::end(wiz_net_info_.gw),
-                   ret.server_address.begin()) &&
-       ret.server_address[2] != 0u)) {
+  if (ret.size <= 0) {
     return ret;
+  }
+
+  if (ret.server_address[2] != 0u) {
+    ret.size = -1;
   }
 
   return ret;
