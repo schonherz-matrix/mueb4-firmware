@@ -19,7 +19,7 @@
 class Panel final {
  public:
   /// #Panel state.
-  enum class State {
+  enum class State : std::uint8_t {
     kDisabled = 0x00u,  ///< Panel is disabled
     kPowerOff = 0x01u,  ///< 12v, 3v3 are off and capacitors are discharging
     kVcc3v3On = 0x02u,  ///< 3v3 is on

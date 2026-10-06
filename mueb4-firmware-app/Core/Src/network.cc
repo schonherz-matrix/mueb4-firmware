@@ -586,8 +586,10 @@ void Network::HandleCommandProtocol() {
           wiz_net_info_.mac[1], wiz_net_info_.mac[2], wiz_net_info_.mac[3],
           wiz_net_info_.mac[4], wiz_net_info_.mac[5],
           (Panel::internal_animation_enabled() ? "on" : "off"),
-          Panel::GetPanel(Panel::Side::LEFT).state(),
-          Panel::GetPanel(Panel::Side::RIGHT).state());
+          static_cast<std::uint8_t>(
+              Panel::GetPanel(Panel::Side::LEFT).state()),
+          static_cast<std::uint8_t>(
+              Panel::GetPanel(Panel::Side::RIGHT).state()));
       char status_string[status_string_size + 1];
 
       std::snprintf(status_string, sizeof(status_string), status_format,
@@ -595,8 +597,10 @@ void Network::HandleCommandProtocol() {
                     wiz_net_info_.mac[2], wiz_net_info_.mac[3],
                     wiz_net_info_.mac[4], wiz_net_info_.mac[5],
                     (Panel::internal_animation_enabled() ? "on" : "off"),
-                    Panel::GetPanel(Panel::Side::LEFT).state(),
-                    Panel::GetPanel(Panel::Side::RIGHT).state());
+                    static_cast<std::uint8_t>(
+                        Panel::GetPanel(Panel::Side::LEFT).state()),
+                    static_cast<std::uint8_t>(
+                        Panel::GetPanel(Panel::Side::RIGHT).state()));
 
       sendto(kCommandSocket, reinterpret_cast<std::uint8_t *>(status_string),
              static_cast<std::uint16_t>(status_string_size + 1),
