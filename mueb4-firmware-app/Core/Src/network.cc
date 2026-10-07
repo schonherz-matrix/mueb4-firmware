@@ -32,6 +32,7 @@
 
 extern std::uint32_t _siisr_vector[];
 extern std::uint32_t _main_program_size[];
+extern std::uint32_t _bootloader_size[];
 
 extern "C" {
 volatile std::uint32_t firmware_update_enabler
@@ -218,9 +219,9 @@ Network::Network() {
   reg_dhcp_cbfunc(CIpAssign, CIpUpdate, CIpConflict);
 
   // DHCP, command protocol, E1.31 data/sync, E1.31 sync,
-  // Art-Net rx/tx sizes
-  std::array<std::uint8_t, 8u> tx_size{1u, 1u, 1u, 1u, 1u, 0u, 0u, 0u};
-  std::array<std::uint8_t, 8u> rx_size{1u, 1u, 4u, 4u, 4u, 0u, 0u, 0u};
+  // Art-Net, bootloader firmware rx/tx sizes
+  std::array<std::uint8_t, 8u> tx_size{1u, 1u, 1u, 1u, 1u, 1u, 0u, 0u};
+  std::array<std::uint8_t, 8u> rx_size{1u, 1u, 4u, 4u, 4u, 2u, 0u, 0u};
 
   // This includes soft reset
   wizchip_init(tx_size.data(), rx_size.data());
@@ -567,6 +568,10 @@ void Network::HandleCommandProtocol() {
       HAL_NVIC_SystemReset();
       break;
     }
+    case Command::kStartBootloaderFirmwareUpdate: {
+      BootloaderFirmwareUpdater();
+      break;
+    }
     case Command::kSetArtNet:
       art_net_data_mode = true;
       StreamTerminated();
@@ -586,21 +591,19 @@ void Network::HandleCommandProtocol() {
           wiz_net_info_.mac[1], wiz_net_info_.mac[2], wiz_net_info_.mac[3],
           wiz_net_info_.mac[4], wiz_net_info_.mac[5],
           (Panel::internal_animation_enabled() ? "on" : "off"),
-          static_cast<std::uint8_t>(
-              Panel::GetPanel(Panel::Side::LEFT).state()),
+          static_cast<std::uint8_t>(Panel::GetPanel(Panel::Side::LEFT).state()),
           static_cast<std::uint8_t>(
               Panel::GetPanel(Panel::Side::RIGHT).state()));
       char status_string[status_string_size + 1];
 
-      std::snprintf(status_string, sizeof(status_string), status_format,
-                    mueb_version, wiz_net_info_.mac[0], wiz_net_info_.mac[1],
-                    wiz_net_info_.mac[2], wiz_net_info_.mac[3],
-                    wiz_net_info_.mac[4], wiz_net_info_.mac[5],
-                    (Panel::internal_animation_enabled() ? "on" : "off"),
-                    static_cast<std::uint8_t>(
-                        Panel::GetPanel(Panel::Side::LEFT).state()),
-                    static_cast<std::uint8_t>(
-                        Panel::GetPanel(Panel::Side::RIGHT).state()));
+      std::snprintf(
+          status_string, sizeof(status_string), status_format, mueb_version,
+          wiz_net_info_.mac[0], wiz_net_info_.mac[1], wiz_net_info_.mac[2],
+          wiz_net_info_.mac[3], wiz_net_info_.mac[4], wiz_net_info_.mac[5],
+          (Panel::internal_animation_enabled() ? "on" : "off"),
+          static_cast<std::uint8_t>(Panel::GetPanel(Panel::Side::LEFT).state()),
+          static_cast<std::uint8_t>(
+              Panel::GetPanel(Panel::Side::RIGHT).state()));
 
       sendto(kCommandSocket, reinterpret_cast<std::uint8_t *>(status_string),
              static_cast<std::uint16_t>(status_string_size + 1),
@@ -620,15 +623,15 @@ void Network::HandleCommandProtocol() {
       break;
     }
     case Command::kGetFirmwareChecksum: {
-      /* __REV, for endianness fix, little to big endian
-       * ~, negate(crc XOR 0xFFFFFFFF) for standard CRC32
-       */
-      auto crc{__REV(~HAL_CRC_Calculate(
-          &hcrc, reinterpret_cast<std::uint32_t *>(_siisr_vector),
-          reinterpret_cast<std::uint32_t>(_main_program_size) / 4u))};
-
-      sendto(kCommandSocket, (std::uint8_t *)&crc, sizeof(crc),
-             server_address.data(), server_port);
+      SendFirmwareCrc(_siisr_vector,
+                      reinterpret_cast<std::uint32_t>(_main_program_size),
+                      server_address, server_port);
+      break;
+    }
+    case Command::kGetBootloaderFirmwareChecksum: {
+      SendFirmwareCrc(reinterpret_cast<std::uint32_t *>(FLASH_BASE),
+                      reinterpret_cast<std::uint32_t>(_bootloader_size),
+                      server_address, server_port);
       break;
     }
     case Command::kGetPanelStates:
@@ -638,4 +641,18 @@ void Network::HandleCommandProtocol() {
     default:
       break;
   }
+}
+
+void Network::SendFirmwareCrc(const std::uint32_t pBuffer[],
+                              const std::uint32_t &size,
+                              const std::array<std::uint8_t, 4> &server_address,
+                              const std::uint16_t &server_port) {
+  /* __REV, for endianness fix, little to big endian
+   * ~, negate(crc XOR 0xFFFFFFFF) for standard CRC32
+   */
+  auto crc{__REV(~HAL_CRC_Calculate(&hcrc, const_cast<std::uint32_t *>(pBuffer),
+                                    size / 4u))};
+
+  sendto(kCommandSocket, (std::uint8_t *)&crc, sizeof(crc),
+         const_cast<std::uint8_t *>(server_address.data()), server_port);
 }

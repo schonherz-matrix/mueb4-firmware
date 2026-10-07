@@ -19,6 +19,8 @@ enum class Command {
   kBlankPanels = 0x06u,            ///< Blank both panels
   kReset = 0x07u,                  ///< Reboot device
   kStartFirmwareUpdate = 0x08u,    ///< Start firmware update process
+  kStartBootloaderFirmwareUpdate =
+      0x10u,  ///< Start bootloader firmware update process
   kSetArtNet = 0x09u,
   kSetE131 = 0x0Au,
   // Immutable commands
@@ -26,6 +28,7 @@ enum class Command {
   kGetStatus = 0x0Cu,            ///< Get device's status
   kGetMac = 0x0Du,               ///< Get device's MAC address
   kGetFirmwareChecksum = 0x0Eu,  ///< Return main program checksum
+  kGetBootloaderFirmwareChecksum = 0x11u,  ///< Return bootloader checksum
   kGetPanelStates = 0x0Fu
 };
 

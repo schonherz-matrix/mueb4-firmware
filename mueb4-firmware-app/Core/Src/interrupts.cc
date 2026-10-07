@@ -5,6 +5,8 @@
 #include "panel.h"
 #include "tim.h"
 
+extern volatile std::uint8_t bootloader_firmware_update_timeout;
+
 extern "C" {
 void HAL_GPIO_EXTI_Callback(std::uint16_t GPIO_Pin) {
   // User button
@@ -19,6 +21,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     HAL_GPIO_TogglePin(LED_HEART_GPIO_Port, LED_HEART_Pin);
     DHCP_time_handler();
     Panel::TimeHandler();
+    bootloader_firmware_update_timeout++;
   } else if (htim == &htim16) {
     Network::Instance().StreamTerminated();
   } else if (htim == &htim17 || htim == &htim14) {

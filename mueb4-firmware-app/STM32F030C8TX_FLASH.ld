@@ -38,6 +38,9 @@ ENTRY(Reset_Handler)
 /* Highest address of the user mode stack */
 _estack = ORIGIN(RAM3) + LENGTH(RAM3); /* end of "RAM3" Ram type memory */
 
+/* Bootloader flash pages */
+_bootloader_pages = 64 - (LENGTH(FLASH) / 1000);
+
 _Min_Heap_Size = 0x200 ; /* required amount of heap */
 _Min_Stack_Size = 0xc00; /* required amount of stack */
 
@@ -202,5 +205,10 @@ SECTIONS
   /* Calculate main program flash size */
   ._main_program_size : {
   	_main_program_size = . - 0x8005000;
+  } >FLASH
+
+  /* Calculate bootloader flash size */
+  ._bootloader_size : {
+  	_bootloader_size = 0x8005000 - 0x8000000;
   } >FLASH
 }

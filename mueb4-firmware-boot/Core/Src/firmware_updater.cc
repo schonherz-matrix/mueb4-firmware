@@ -1,6 +1,5 @@
 /**
  * This file contains firmware updater functionality.
- * The file is located at the end of flash, separated from main program area.
  * @file
  * @author Zsombor Bodnár
  */
@@ -35,8 +34,6 @@ std::uint8_t firmware_update_timeout{0u};
 
 /**
  * Manages firmware update process.
- * @Note At this point the device should have an IP address, and all peripherals
- * should be initialized.
  */
 void FirmwareUpdater() {
   firmware_update_enabled = true;

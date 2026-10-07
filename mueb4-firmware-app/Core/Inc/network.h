@@ -45,6 +45,9 @@ class Network final {
   /// Command socket port number.
   static constexpr std::uint16_t kCommandSocketPort{50000u};
 
+  /// Bootloader firmware updater port number.
+  static constexpr std::uint16_t kFirmwareUpdaterPort{50002u};
+
   /// EUI-48 MAC start address.
   static constexpr std::uint16_t kEui48MacStartAddress{0xFAu};
 
@@ -67,6 +70,9 @@ class Network final {
 
   static constexpr std::uint8_t kArtNetSocket{4u};
 
+  /// Bootloader firmware updater Socket number.
+  static constexpr std::uint8_t kFirmwareUpdaterSocket{5u};
+
   Network();
   ~Network() = default;
 
@@ -88,6 +94,12 @@ class Network final {
    * @see #Command.
    */
   void HandleCommandProtocol();
+
+  void BootloaderFirmwareUpdater();
+
+  void SendFirmwareCrc(const std::uint32_t pBuffer[], const std::uint32_t &size,
+                       const std::array<std::uint8_t, 4> &server_address,
+                       const std::uint16_t &server_port);
 
   ArtPollReply art_poll_reply_;
 
