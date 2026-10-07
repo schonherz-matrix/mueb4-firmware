@@ -11,11 +11,7 @@
 #include "adc.h"
 #include "usart.h"
 
-/**
- * Used for window#step_anim
- * @see ::TIM17_IRQHandler
- */
-bool Panel::internal_animation_enabled_{false};
+volatile bool Panel::internal_animation_enabled_{false};
 bool Panel::swapped_{false};
 std::array<std::uint32_t, 2u> Panel::adc_{};
 

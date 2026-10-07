@@ -139,7 +139,7 @@ class Panel final {
   static std::array<std::uint32_t, 2u> adc_;
 
   /// Stores if the internal animation is enabled.
-  static bool internal_animation_enabled_;
+  static volatile bool internal_animation_enabled_;
 
   /// Stores if left and right panels are swapped.
   static bool swapped_;
@@ -167,12 +167,12 @@ class Panel final {
    * Counts the seconds.
    * Used to countdown the timeout in panel probing.
    */
-  std::uint8_t tick_1s_{0u};
+  volatile std::uint8_t tick_1s_{0u};
 
   std::uint8_t heartbeat_{0u};
 
   /// Stores if we can communicate with the panel.
-  bool active_{false};
+  volatile bool active_{false};
 };
 
 #endif  // MUEB4_FIRMWARE_CORE_INC_PANEL_H_
