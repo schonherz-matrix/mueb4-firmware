@@ -30,9 +30,7 @@ std::uint32_t ReadBigEndian(const std::uint8_t *data) {
 }
 }  // namespace
 
-extern "C" {
 volatile std::uint8_t bootloader_firmware_update_timeout{0u};
-}
 
 /**
  * Manages bootloader firmware update process.
