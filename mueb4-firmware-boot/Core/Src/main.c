@@ -35,7 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_UPDATE_MAGIC 0xA53C91E7u
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -98,12 +98,17 @@ int main(void)
   // Wait for user button(enters firmware updater)
   HAL_Delay(1000u);
 
-  /* Test if user code is programmed starting from address "(uint32_t)_appaddr" or firmware update is enabled from app */
+  // Button window is over, the update cannot be triggered again
+  HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
+
+  /* Test if user code is programmed starting from address "(uint32_t)_appaddr" or firmware update is enabled */
   if (((*(__IO uint32_t *)(uint32_t)_app_address) & 0x2FFE0000) != 0x20000000 ||
       firmware_update_enabler == FIRMWARE_UPDATE_MAGIC) {
     firmware_update_enabler = 0u;
     FirmwareUpdater();
   } else {
+    __disable_irq();
+
     /* Initialize user application's Stack Pointer */
     __set_MSP(*(__IO uint32_t *)(uint32_t)_app_address);
 

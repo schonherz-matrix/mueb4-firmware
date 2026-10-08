@@ -30,8 +30,8 @@ constexpr std::uint8_t kEepromAddress{0b10100001u};
 }  // namespace
 
 extern "C" {
-bool firmware_update_enabled{false};
-std::uint8_t firmware_update_timeout{0u};
+volatile bool firmware_update_enabled{false};
+volatile std::uint8_t firmware_update_timeout{0u};
 
 /**
  * Manages firmware update process.

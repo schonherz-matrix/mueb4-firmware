@@ -43,13 +43,14 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-extern bool firmware_update_enabled;
-extern uint8_t firmware_update_timeout;
+extern volatile bool firmware_update_enabled;
+extern volatile uint8_t firmware_update_timeout;
+extern volatile uint32_t firmware_update_enabler;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
-void FirmwareUpdater(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -150,7 +151,8 @@ void SysTick_Handler(void)
 void EXTI2_3_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI2_3_IRQn 0 */
-  FirmwareUpdater();
+  // Main starts the firmware updater after the button window
+  firmware_update_enabler = FIRMWARE_UPDATE_MAGIC;
   /* USER CODE END EXTI2_3_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(USER_INPUT_BUTTON_Pin);
   /* USER CODE BEGIN EXTI2_3_IRQn 1 */

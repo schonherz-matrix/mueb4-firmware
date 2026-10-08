@@ -97,7 +97,7 @@ void Error_Handler(void);
 #define PANEL_3V3_LEFT_Pin GPIO_PIN_9
 #define PANEL_3V3_LEFT_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
-
+#define FIRMWARE_UPDATE_MAGIC 0xA53C91E7u
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
