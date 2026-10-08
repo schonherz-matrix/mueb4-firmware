@@ -62,15 +62,24 @@ void Panel::Step() {
     case State::kPowerOff: {
       // -- No debug --
       HAL_ADC_Start(&hadc);
+      bool converted{false};
       // PA0/IN0/LEFT
-      HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY);
-      adc_[0] = HAL_ADC_GetValue(&hadc);
+      if (HAL_ADC_PollForConversion(&hadc, kAdcTimeout) == HAL_OK) {
+        adc_[0] = HAL_ADC_GetValue(&hadc);
 
-      // PA1/IN1/RIGHT
-      HAL_ADC_PollForConversion(&hadc, HAL_MAX_DELAY);
-      adc_[1] = HAL_ADC_GetValue(&hadc);
+        // PA1/IN1/RIGHT
+        if (HAL_ADC_PollForConversion(&hadc, kAdcTimeout) == HAL_OK) {
+          adc_[1] = HAL_ADC_GetValue(&hadc);
+          converted = true;
+        }
+      }
       HAL_ADC_Stop(&hadc);
       // -- No debug --
+
+      // Don't power on with stale values, retry in the next step
+      if (!converted) {
+        break;
+      }
 
       // Check if the capacitors are discharged
       if ((side_ == Side::LEFT && adc_[0] < 100u) ||
@@ -239,14 +248,12 @@ void Panel::Heartbeat() { heartbeat_received_ = true; }
 
 void Panel::HandleHeartbeat() {
   if (state_ >= State::kVcc3v3On) {
-    if ((heartbeat_ & 0xF0u) == 0x80u) {
-      // Reception was stopped since the interrupt, a byte may have overrun
-      __HAL_UART_CLEAR_OREFLAG(huartx_);
-      HAL_UART_Receive_IT(huartx_, &heartbeat_, 1u);
-      active_ = true;
-    } else {  // invalid state
-      active_ = false;
-    }
+    // Invalid state only clears active_, the timeout in Step() decides
+    active_ = (heartbeat_ & 0xF0u) == 0x80u;
+
+    // Reception was stopped since the interrupt, a byte may have overrun
+    __HAL_UART_CLEAR_OREFLAG(huartx_);
+    HAL_UART_Receive_IT(huartx_, &heartbeat_, 1u);
   }
 }
 

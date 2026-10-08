@@ -137,6 +137,9 @@ class Panel final {
   static std::array<std::uint8_t, 2> GetPanelStates();
 
  private:
+  /// ADC conversion timeout in ms, a conversion takes a few µs.
+  static constexpr std::uint32_t kAdcTimeout{10u};
+
   explicit Panel(Side side);
   ~Panel() = default;
 
