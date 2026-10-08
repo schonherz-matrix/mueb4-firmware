@@ -63,6 +63,17 @@ Network &Network::Instance() {
 }
 
 void Network::Step() {
+  // Timer events are only flagged in interrupts, handled here
+  if (stream_timed_out_) {
+    stream_timed_out_ = false;
+    StreamTerminated();
+  }
+
+  if (sync_timed_out_) {
+    sync_timed_out_ = false;
+    synced_ = false;
+  }
+
   if (wizphy_getphylink() == PHY_LINK_ON) {
     HAL_GPIO_WritePin(LED_JOKER_GPIO_Port, LED_JOKER_Pin, GPIO_PIN_SET);
 
@@ -85,10 +96,6 @@ void Network::Step() {
       BootloaderFirmwareUpdater();
     }
 
-    HAL_NVIC_DisableIRQ(TIM14_IRQn);
-    HAL_NVIC_DisableIRQ(TIM16_IRQn);
-    HAL_NVIC_DisableIRQ(TIM17_IRQn);
-
     if (!art_net_data_mode && getSn_RX_RSR(kE131SyncSocket) > 0u) {
       HandleE131Packet(kE131SyncSocket);
     }
@@ -100,10 +107,6 @@ void Network::Step() {
     if (getSn_RX_RSR(kArtNetSocket) > 0u) {
       HandleArtNetPacket(kArtNetSocket);
     }
-
-    HAL_NVIC_EnableIRQ(TIM17_IRQn);
-    HAL_NVIC_EnableIRQ(TIM16_IRQn);
-    HAL_NVIC_EnableIRQ(TIM14_IRQn);
   } else {
     HAL_GPIO_WritePin(LED_JOKER_GPIO_Port, LED_JOKER_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(LED_DHCP_GPIO_Port, LED_DHCP_Pin, GPIO_PIN_RESET);
@@ -164,7 +167,9 @@ void Network::IpUpdate() {
   UpdateIp();
 }
 
-void Network::SyncTimedOut() { synced_ = false; }
+void Network::StreamTimedOut() { stream_timed_out_ = true; }
+
+void Network::SyncTimedOut() { sync_timed_out_ = true; }
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "readability-convert-member-functions-to-static"
@@ -195,12 +200,14 @@ void Network::StreamTerminated() {
   HAL_NVIC_ClearPendingIRQ(TIM16_IRQn);
   htim16.Instance->EGR = TIM_EGR_UG;
   CLEAR_BIT(htim16.Instance->SR, TIM_SR_UIF);
+  stream_timed_out_ = false;
 
   close(kE131SyncSocket);
   HAL_TIM_Base_Stop_IT(&htim17);
   HAL_NVIC_ClearPendingIRQ(TIM17_IRQn);
   htim17.Instance->EGR = TIM_EGR_UG;
   CLEAR_BIT(htim17.Instance->SR, TIM_SR_UIF);
+  sync_timed_out_ = false;
 
   left_panel.Blank();
   right_panel.Blank();
@@ -383,6 +390,7 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
     HAL_NVIC_ClearPendingIRQ(TIM16_IRQn);
     htim16.Instance->EGR = TIM_EGR_UG;
     CLEAR_BIT(htim16.Instance->SR, TIM_SR_UIF);
+    stream_timed_out_ = false;
     HAL_TIM_Base_Start_IT(&htim16);
   } else if (root_layer->vector == VECTOR_ROOT_E131_EXTENDED) {
     const auto e131SyncPacket{
@@ -410,6 +418,7 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
     HAL_NVIC_ClearPendingIRQ(TIM17_IRQn);
     htim17.Instance->EGR = TIM_EGR_UG;
     CLEAR_BIT(htim17.Instance->SR, TIM_SR_UIF);
+    sync_timed_out_ = false;
     HAL_TIM_Base_Start_IT(&htim17);
   }
 }
@@ -472,6 +481,7 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
       HAL_NVIC_ClearPendingIRQ(TIM16_IRQn);
       htim16.Instance->EGR = TIM_EGR_UG;
       CLEAR_BIT(htim16.Instance->SR, TIM_SR_UIF);
+      stream_timed_out_ = false;
       HAL_TIM_Base_Start_IT(&htim16);
       break;
     }
@@ -493,6 +503,7 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
       HAL_NVIC_ClearPendingIRQ(TIM14_IRQn);
       htim14.Instance->EGR = TIM_EGR_UG;
       CLEAR_BIT(htim14.Instance->SR, TIM_SR_UIF);
+      sync_timed_out_ = false;
       HAL_TIM_Base_Start_IT(&htim14);
       break;
     }

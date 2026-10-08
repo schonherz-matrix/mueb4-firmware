@@ -7,11 +7,14 @@
 #include "panel.h"
 
 #include <algorithm>
+#include <atomic>
 
 #include "adc.h"
 #include "usart.h"
 
 volatile bool Panel::internal_animation_enabled_{false};
+volatile bool Panel::internal_animation_step_requested_{false};
+volatile bool Panel::internal_animation_toggle_requested_{false};
 bool Panel::swapped_{false};
 std::array<std::uint32_t, 2u> Panel::adc_{};
 
@@ -48,6 +51,13 @@ Panel& Panel::GetPanel(const UART_HandleTypeDef* huartx) {
 }
 
 void Panel::Step() {
+  if (heartbeat_received_) {
+    heartbeat_received_ = false;
+    // Read heartbeat_ written by the interrupt after the flag
+    std::atomic_signal_fence(std::memory_order_acquire);
+    HandleHeartbeat();
+  }
+
   switch (state_) {
     case State::kPowerOff: {
       // -- No debug --
@@ -77,6 +87,7 @@ void Panel::Step() {
         }
 
         // Start heartbeat detection
+        heartbeat_received_ = false;
         HAL_UART_Receive_IT(huartx_, &heartbeat_, 1u);
         tick_1s_ = 0u;
       }
@@ -135,10 +146,26 @@ void Panel::Step() {
   }
 }
 
+void Panel::StepInternalAnimation() {
+  if (internal_animation_toggle_requested_) {
+    internal_animation_toggle_requested_ = false;
+    ToggleInternalAnimation();
+  }
+
+  if (internal_animation_step_requested_) {
+    internal_animation_step_requested_ = false;
+    SendInternalAnimationFrame();
+  }
+}
+
 void Panel::TimeHandler() {
   Panel::left_panel().tick_1s_++;
   Panel::right_panel().tick_1s_++;
-  Panel::StepInternalAnimation();
+  internal_animation_step_requested_ = true;
+}
+
+void Panel::RequestInternalAnimationToggle() {
+  internal_animation_toggle_requested_ = true;
 }
 
 void Panel::ToggleInternalAnimation() {
@@ -208,9 +235,13 @@ Panel& Panel::SetColorData(std::ranges::subrange<const std::uint8_t*> data,
   return *this;
 }
 
-void Panel::Heartbeat() {
+void Panel::Heartbeat() { heartbeat_received_ = true; }
+
+void Panel::HandleHeartbeat() {
   if (state_ >= State::kVcc3v3On) {
     if ((heartbeat_ & 0xF0u) == 0x80u) {
+      // Reception was stopped since the interrupt, a byte may have overrun
+      __HAL_UART_CLEAR_OREFLAG(huartx_);
       HAL_UART_Receive_IT(huartx_, &heartbeat_, 1u);
       active_ = true;
     } else {  // invalid state
@@ -239,7 +270,7 @@ Panel::Panel(Side side)
       gpio_12v_pin_(side == Side::LEFT ? PANEL_12V_LEFT_Pin
                                        : PANEL_12V_RIGHT_Pin) {}
 
-void Panel::StepInternalAnimation() {
+void Panel::SendInternalAnimationFrame() {
   if (!internal_animation_enabled_) {
     return;
   }

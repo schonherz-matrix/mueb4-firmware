@@ -20,6 +20,7 @@ extern "C" [[noreturn]] void Main() {
 
   while (true) {
     network.Step();
+    Panel::StepInternalAnimation();
     left_panel.Step();
     right_panel.Step();
   }

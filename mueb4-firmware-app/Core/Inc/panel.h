@@ -85,16 +85,22 @@ class Panel final {
   /// Panel class' loop
   void Step();
 
+  /// Handles internal animation events flagged by interrupts.
+  static void StepInternalAnimation();
+
   /**
-   * Increase #tick_1s_ by 1.
-   * @see ::TIM17_IRQHandler
+   * Increase #tick_1s_ by 1 and request an internal animation step.
+   * Called from interrupt.
+   * @see ::TIM6_IRQHandler
    */
   static void TimeHandler();
 
   /**
-   * Used for GPIO USER_INPUT_BUTTON
+   * Used for GPIO USER_INPUT_BUTTON, called from interrupt.
    * @see ::EXTI2_3_IRQHandler
    */
+  static void RequestInternalAnimationToggle();
+
   static void ToggleInternalAnimation();
 
   static void SetInternalAnimation(bool on);
@@ -123,6 +129,7 @@ class Panel final {
   Panel& SetColorData(std::ranges::subrange<const std::uint8_t*> data,
                       bool _8bit);
 
+  /// Called from UART RX interrupt, Step() handles the heartbeat.
   void Heartbeat();
 
   [[nodiscard]] State state() const;
@@ -133,13 +140,22 @@ class Panel final {
   explicit Panel(Side side);
   ~Panel() = default;
 
-  /// Internal animation's loop
-  static void StepInternalAnimation();
+  /// Internal animation's next frame
+  static void SendInternalAnimationFrame();
+
+  /// Checks the received heartbeat and restarts reception.
+  void HandleHeartbeat();
 
   static std::array<std::uint32_t, 2u> adc_;
 
   /// Stores if the internal animation is enabled.
   static volatile bool internal_animation_enabled_;
+
+  /// Set by the 1s timer interrupt.
+  static volatile bool internal_animation_step_requested_;
+
+  /// Set by the user button interrupt.
+  static volatile bool internal_animation_toggle_requested_;
 
   /// Stores if left and right panels are swapped.
   static bool swapped_;
@@ -170,6 +186,9 @@ class Panel final {
   volatile std::uint8_t tick_1s_{0u};
 
   std::uint8_t heartbeat_{0u};
+
+  /// Set by UART RX interrupt when #heartbeat_ is received.
+  volatile bool heartbeat_received_{false};
 
   /// Stores if we can communicate with the panel.
   volatile bool active_{false};

@@ -11,7 +11,7 @@ extern "C" {
 void HAL_GPIO_EXTI_Callback(std::uint16_t GPIO_Pin) {
   // User button
   if (GPIO_Pin == GPIO_PIN_2) {
-    Panel::ToggleInternalAnimation();
+    Panel::RequestInternalAnimationToggle();
   }
 }
 
@@ -23,7 +23,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     Panel::TimeHandler();
     bootloader_firmware_update_timeout++;
   } else if (htim == &htim16) {
-    Network::Instance().StreamTerminated();
+    Network::Instance().StreamTimedOut();
   } else if (htim == &htim17 || htim == &htim14) {
     Network::Instance().SyncTimedOut();
   }

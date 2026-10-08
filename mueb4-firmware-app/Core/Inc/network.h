@@ -35,6 +35,10 @@ class Network final {
 
   void IpUpdate();
 
+  /// Called from interrupt, Step() terminates the stream.
+  void StreamTimedOut();
+
+  /// Called from interrupt, Step() clears the synchronization.
   void SyncTimedOut();
 
   void IpConflict() const;
@@ -144,6 +148,12 @@ class Network final {
   bool art_net_data_mode{false};
 
   bool bootloader_firmware_update_requested_{false};
+
+  /// Set by stream timeout timer interrupt.
+  volatile bool stream_timed_out_{false};
+
+  /// Set by synchronization timeout timer interrupts.
+  volatile bool sync_timed_out_{false};
 };
 
 #endif  // MUEB4_FIRMWARE_CORE_INC_NETWORK_H_
