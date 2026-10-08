@@ -36,7 +36,7 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM3) + LENGTH(RAM3); /* end of "RAM3" Ram type memory */
+_estack = ORIGIN(RAM2) + LENGTH(RAM2); /* end of "RAM2" Ram type memory */
 
 /* Bootloader flash pages */
 _bootloader_pages = 64 - (LENGTH(FLASH) / 1024);
@@ -44,12 +44,20 @@ _bootloader_pages = 64 - (LENGTH(FLASH) / 1024);
 _Min_Heap_Size = 0x200 ; /* required amount of heap */
 _Min_Stack_Size = 0xc00; /* required amount of stack */
 
-/* Memories definition */
+/* Memories definition
+ * RAM1: Shared with the bootloader at fixed addresses, must start at SRAM
+ *       start. Cortex-M0 has no VTOR, the vector table is always read from
+ *       address 0. The startup code copies .isr_vector (48 words) here and
+ *       SystemInit() remaps SRAM to address 0. firmware_update_enabler follows
+ *       at 0x200000C0, the bootloader reads it after reset.
+ * RAM2: Application data, heap and stack. The bootloader uses the same RAM,
+ *       it resets all peripherals and interrupts before jumping here, so none
+ *       of its code runs after the jump.
+ */
 MEMORY
 {
   RAM1    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 196
-  RAM2    (r)    : ORIGIN = 0x200000C4,   LENGTH = 600
-  RAM3    (xrw)    : ORIGIN = 0x2000031C,   LENGTH = 7396
+  RAM2    (xrw)    : ORIGIN = 0x200000C4,   LENGTH = 7996
   FLASH    (rx)    : ORIGIN = 0x8007000,   LENGTH = 36K
 }
 
@@ -69,7 +77,10 @@ SECTIONS
     _eisr_vector = .;        /* define a global symbol at data end */
   } >RAM1 AT> FLASH
   
-  /* Reserved RAM shared between APP and BOOT */
+  /* Reserved RAM shared between APP and BOOT, NOLOAD: not zeroed by the
+   * startup code. Its address is hard-coded in the bootloader's linker
+   * script, so it must stay right after the vector table.
+   */
   .firmware_update_enabler (NOLOAD) :
   {
     . = ALIGN(4);
@@ -149,7 +160,7 @@ SECTIONS
   /* Used by the startup to initialize data */
   _sidata = LOADADDR(.data);
 
-  /* Initialized data sections into "RAM3" Ram type memory */
+  /* Initialized data sections into "RAM2" Ram type memory */
   .data :
   {
     . = ALIGN(4);
@@ -162,9 +173,9 @@ SECTIONS
     . = ALIGN(4);
     _edata = .;        /* define a global symbol at data end */
 
-  } >RAM3 AT> FLASH
+  } >RAM2 AT> FLASH
 
-  /* Uninitialized data section into "RAM3" Ram type memory */
+  /* Uninitialized data section into "RAM2" Ram type memory */
   . = ALIGN(4);
   .bss :
   {
@@ -178,9 +189,9 @@ SECTIONS
     . = ALIGN(4);
     _ebss = .;         /* define a global symbol at bss end */
     __bss_end__ = _ebss;
-  } >RAM3
+  } >RAM2
 
-  /* User_heap_stack section, used to check that there is enough "RAM3" Ram  type memory left */
+  /* User_heap_stack section, used to check that there is enough "RAM2" Ram  type memory left */
   ._user_heap_stack :
   {
     . = ALIGN(8);
@@ -189,7 +200,7 @@ SECTIONS
     . = . + _Min_Heap_Size;
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
-  } >RAM3
+  } >RAM2
 
   /* Remove information from the compiler libraries */
   /DISCARD/ :
@@ -200,14 +211,17 @@ SECTIONS
   }
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
+
+  ASSERT(ADDR(.firmware_update_enabler) == 0x200000C0,
+         "firmware_update_enabler moved, the bootloader reads 0x200000C0")
   
   /* Calculate main program flash size */
   ._main_program_size : {
-  	_main_program_size = . - 0x8007000;
+  	_main_program_size = . - ORIGIN(FLASH);
   } >FLASH
 
   /* Calculate bootloader flash size */
   ._bootloader_size : {
-  	_bootloader_size = 0x8007000 - 0x8000000;
+  	_bootloader_size = ORIGIN(FLASH) - 0x8000000;
   } >FLASH
 }

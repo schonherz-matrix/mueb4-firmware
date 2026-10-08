@@ -36,7 +36,7 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM3) + LENGTH(RAM3); /* end of "RAM3" Ram type memory */
+_estack = ORIGIN(RAM2) + LENGTH(RAM2); /* end of "RAM2" Ram type memory */
 
 /* Application address */
 _app_address = ORIGIN(FLASH) + LENGTH(FLASH);
@@ -44,18 +44,26 @@ _app_address = ORIGIN(FLASH) + LENGTH(FLASH);
 /* Application flash pages */
 _app_pages = 64 - (LENGTH(FLASH) / 1024);
 
-/* Firmware updater enabler */
+/* Firmware updater enabler, placed by the application right after its
+ * vector table in RAM1, see its .firmware_update_enabler section
+ */
 firmware_update_enabler = 0x200000c0;
 
 _Min_Heap_Size = 0x200 ; /* required amount of heap */
 _Min_Stack_Size = 0xc00; /* required amount of stack */
 
-/* Memories definition */
+/* Memories definition
+ * RAM1: Reserved, read only here so nothing is placed in it. The application
+ *       keeps its vector table (Cortex-M0 has no VTOR) and
+ *       firmware_update_enabler here, the enabler must survive the reset.
+ * RAM2: Bootloader data, heap and stack, shared with the application. Only
+ *       one of them runs at a time: main() resets all peripherals and
+ *       interrupts before jumping to the application.
+ */
 MEMORY
 {
   RAM1    (r)    : ORIGIN = 0x20000000,   LENGTH = 196
-  RAM2    (xrw)    : ORIGIN = 0x200000C4,   LENGTH = 600
-  RAM3    (xrw)    : ORIGIN = 0x2000031C,   LENGTH = 7396
+  RAM2    (xrw)    : ORIGIN = 0x200000C4,   LENGTH = 7996
   FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 28K
 }
 
@@ -74,7 +82,6 @@ SECTIONS
   .text :
   {
     . = ALIGN(4);
-    KEEP(*(.text.FirmwareUpdater))
     *(.text)           /* .text sections (code) */
     *(.text*)          /* .text* sections (code) */
     *(.glue_7)         /* glue arm to thumb code */
@@ -174,7 +181,7 @@ SECTIONS
     __bss_end__ = _ebss;
   } >RAM2
 
-  /* User_heap_stack section, used to check that there is enough "RAM3" Ram  type memory left */
+  /* User_heap_stack section, used to check that there is enough "RAM2" Ram  type memory left */
   ._user_heap_stack :
   {
     . = ALIGN(8);
@@ -183,7 +190,7 @@ SECTIONS
     . = . + _Min_Heap_Size;
     . = . + _Min_Stack_Size;
     . = ALIGN(8);
-  } >RAM3
+  } >RAM2
 
   /* Remove information from the compiler libraries */
   /DISCARD/ :

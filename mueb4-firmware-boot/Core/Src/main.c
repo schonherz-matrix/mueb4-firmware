@@ -117,7 +117,9 @@ int main(void)
     HAL_DeInit();
 
     // Not covered by HAL_DeInit(): stop SysTick, disable and clear every
-    // interrupt in the NVIC, the app enables the ones it uses
+    // interrupt in the NVIC, the app enables the ones it uses.
+    // Required: the app overwrites the bootloader's RAM (shared RAM2 region),
+    // no bootloader interrupt handler may run after the jump.
     SysTick->CTRL = 0u;
     SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;
     NVIC->ICER[0] = 0xFFFFFFFFu;
