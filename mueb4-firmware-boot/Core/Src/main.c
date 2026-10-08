@@ -111,6 +111,18 @@ int main(void)
   } else {
     __disable_irq();
 
+    // Resets every peripheral (APB1, APB2, AHB GPIO), the app initializes
+    // them again. The clock configuration stays, the app's
+    // SystemClock_Config() needs the same PLL setting as the bootloader's.
+    HAL_DeInit();
+
+    // Not covered by HAL_DeInit(): stop SysTick, disable and clear every
+    // interrupt in the NVIC, the app enables the ones it uses
+    SysTick->CTRL = 0u;
+    SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;
+    NVIC->ICER[0] = 0xFFFFFFFFu;
+    NVIC->ICPR[0] = 0xFFFFFFFFu;
+
     /* Initialize user application's Stack Pointer */
     __set_MSP(*(__IO uint32_t *)(uint32_t)_app_address);
 
