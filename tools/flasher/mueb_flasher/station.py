@@ -7,7 +7,7 @@ import zlib
 
 from . import commands
 from .config import Config
-from .flash import ConnectError, FlashError, tcp_flash
+from .flash import ConnectError, FlashError, pad_image, tcp_flash
 from .report import Reporter, Result
 
 
@@ -35,8 +35,9 @@ class Station:
         self.reporter = reporter
         self.app_image = app_image
         self.boot_image = boot_image
-        self.app_crc = zlib.crc32(app_image)
-        self.boot_crc = zlib.crc32(boot_image)
+        # The device stores and checksums the padded image
+        self.app_crc = zlib.crc32(pad_image(app_image))
+        self.boot_crc = zlib.crc32(pad_image(boot_image))
         self._mac: str | None = None
         self._retries = 0
 
@@ -162,12 +163,14 @@ class Station:
         raise StepFailed("enter bootloader",
                          "device ignored kStartFirmwareUpdate")
 
-    def _flash(self, label: str, image: bytes, connect_window: float) -> None:
+    def _flash(self, label: str, image: bytes, connect_window: float,
+               header: bool = True) -> None:
         tcp_flash(
             image, self.cfg.device_ip, self.cfg.flash_port, self.cfg.host_ip,
             connect_window, self.cfg.flash_ok_timeout,
             lambda pages, total, keepalives: self.reporter.progress(
-                label, pages, total, keepalives))
+                label, pages, total, keepalives),
+            header)
 
     def _flash_app(self) -> None:
         last_error = None
@@ -176,7 +179,10 @@ class Station:
             window = (self.cfg.connect_window if attempt == 0
                       else self.cfg.dhcp_timeout)
             try:
-                self._flash("app", self.app_image, window)
+                # The old bootloader doesn't expect the image header. The
+                # bootloader is always flashed by the new application.
+                self._flash("app", self.app_image, window,
+                            header=not self.cfg.legacy_bootloader)
                 self.dhcp.drain()
                 return
             except FlashError as e:
@@ -188,23 +194,30 @@ class Station:
 
     def _flash_bootloader(self, result: Result) -> None:
         last_error = ""
+        updater_listening = False
         for attempt in range(self.cfg.flash_attempts):
             if attempt:
                 self._retries += 1
                 self.reporter.critical(
                     "DO NOT POWER OFF - bootloader may be corrupt, retrying")
-                # The application returns from the updater after its timeout
-                self._wait_app("bootloader retry")
 
-            self.commands.send(commands.START_BOOTLOADER_FIRMWARE_UPDATE)
+            # After a failed transfer the updater keeps listening (after the
+            # erase it never returns), reconnect without a new command. If it
+            # never started, the application is still running.
+            if not updater_listening:
+                if attempt:
+                    self._wait_app("bootloader retry")
+                self.commands.send(commands.START_BOOTLOADER_FIRMWARE_UPDATE)
             try:
                 self._flash("boot", self.boot_image, self.cfg.connect_window)
             except ConnectError as e:
                 last_error = str(e)
+                updater_listening = False
                 self.reporter.warning(f"Bootloader update not started: {e}")
                 continue
             except FlashError as e:
                 last_error = str(e)
+                updater_listening = True
                 self.reporter.warning(f"Bootloader flash attempt "
                                       f"{attempt + 1} failed: {e}")
                 continue

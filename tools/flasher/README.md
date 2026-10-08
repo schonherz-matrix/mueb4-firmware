@@ -9,11 +9,28 @@ For every board:
 1. Link up, the built-in DHCP server gives the board `10.6.18.5`
 2. `kPing` checks that the application is running
 3. `kStartFirmwareUpdate`, the board restarts into the bootloader
-4. `mueb4-firmware-app.bin` is sent over TCP (port 50002); the board answers `FLASH_OK` and restarts
+4. `mueb4-firmware-app.bin` is sent over TCP (port 50002); the board verifies it and answers `FLASH_OK` and restarts
 5. `kGetFirmwareChecksum` is compared with the CRC32 of the file
-6. `kStartBootloaderFirmwareUpdate`, then `mueb4-firmware-boot.bin` is sent; the board answers `FLASH_OK`
+6. `kStartBootloaderFirmwareUpdate`, then `mueb4-firmware-boot.bin` is sent; the board verifies it and answers `FLASH_OK`
 7. `kGetBootloaderFirmwareChecksum` is compared with the CRC32 of the file
 8. PASS/FAIL banner, beep, and a row in `results.csv`. Unplug the board, plug in the next one.
+
+### TCP transfer
+
+The image is padded with `0xFF` to a multiple of 4 bytes. Before the image, an
+8-byte header is sent: image size and CRC32 (`zlib.crc32` of the padded image),
+both big endian. The board rejects an invalid header before erasing anything.
+After the host closes its side, the board computes the CRC32 of the flash
+content with the hardware CRC unit and answers `FLASH_OK`, or `FLASH_ERROR` if
+the size or the CRC32 doesn't match. The station then retries.
+
+- The bootloader programs the application's first word (initial stack
+  pointer) only after successful verification. An interrupted or corrupt
+  transfer leaves the application invalid, and the board stays in the
+  bootloader.
+- After erasing the bootloader, the application never leaves the updater. On
+  an error it waits for the station to reconnect. The station retries without
+  sending `kStartBootloaderFirmwareUpdate` again.
 
 ## Station setup (once per PC)
 
@@ -56,8 +73,34 @@ size and CRC32 of both files are printed; check that every station shows the
 same values. Stop with Ctrl+C.
 
 If the bootloader stage fails, the console shows **DO NOT POWER OFF**. The
-application is still running and the script retries; a board whose bootloader
-stays broken must not be reset and needs SWD recovery.
+application keeps waiting in its bootloader updater and the script reconnects
+and retries; a board whose bootloader stays broken must not be reset and needs
+SWD recovery.
+
+### Boards with the old bootloader
+
+The old bootloader (before image verification) expects the application image
+without the 8-byte header. For boards that still have it, add
+`--legacy-bootloader`:
+
+```bash
+python flasher.py --iface "Ethernet 2" --legacy-bootloader
+```
+
+The application is then sent without the header. The bootloader is always
+sent with the header, because the new application flashes it. After this run
+the board has both new firmwares, and later runs need no flag.
+
+Use the flag only for old boards:
+
+- Without the flag, the old bootloader writes the header into flash. The
+  application doesn't start, and the board stays in the old bootloader's
+  updater (it keeps listening on port 50002). The station can't recover it
+  yet, because it starts every board with a ping to the application. Use SWD
+  for now.
+- With the flag, the new bootloader rejects the application (`FLASH_ERROR`)
+  before erasing anything. The board keeps its firmware; rerun it without the
+  flag.
 
 ## Multiple stations
 

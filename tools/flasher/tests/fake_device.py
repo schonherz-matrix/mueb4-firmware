@@ -1,8 +1,11 @@
 """Loopback simulation of a MUEB4 board for testing the station flow.
 
 Implements the UDP command protocol and the TCP firmware updater: the device
-sends "!\\0" keepalives, receives 1024-byte pages and answers FLASH_OK once
-the host closes its side.
+reads the 8-byte image header (size, CRC32), sends "!\\0" keepalives,
+receives 1024-byte pages and, once the host closes its side, answers FLASH_OK
+or FLASH_ERROR if the size or CRC32 doesn't match. With `legacy_bootloader`
+the bootloader behaves like the old firmware (no header, no verification)
+until a new bootloader is flashed.
 """
 
 import socket
@@ -31,11 +34,14 @@ class FakeDevice:
         self.app = bytes(app)
         self.boot = bytes(boot)
         self.mode = "app"  # "app", "bootloader" or "busy"
+        # Old bootloader: no image header and no verification
+        self.legacy_bootloader = False
         # Fault injection
         self.fail_app_flashes = 0
         self.fail_boot_flashes = 0
         self.drop_start_commands = 0
         self.corrupt_app = False
+        self.corrupt_transfers = 0  # Verified by the device: FLASH_ERROR
         self.respond_to_ping = True
 
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -84,8 +90,13 @@ class FakeDevice:
                 threading.Thread(target=self._app_bootloader_updater,
                                  daemon=True).start()
 
-    def _receive_image(self, fail: bool) -> bytes | None:
-        """One listen/accept/transfer cycle, None on failure or timeout."""
+    def _receive_image(self, fail: bool,
+                       header: bool = True) -> bytes | bool | None:
+        """One listen/accept/transfer cycle.
+
+        Returns the image, False if the transfer failed (the device listens
+        again) or None on accept timeout.
+        """
         with socket.socket() as listener:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("127.0.0.1", self.flash_port))
@@ -97,6 +108,19 @@ class FakeDevice:
                 return None
 
         with conn:
+            size = crc = None
+            if header:
+                data = bytearray()
+                while len(data) < 8:
+                    chunk = conn.recv(8 - len(data))
+                    if not chunk:
+                        return False
+                    data += chunk
+                size, crc = struct.unpack(">II", data)
+                if size == 0 or size % 4 or size > 64 * 1024:
+                    conn.sendall(b"FLASH_ERROR\0")
+                    return False
+
             image = bytearray()
             while True:
                 conn.sendall(b"!\0")  # Keepalive
@@ -104,20 +128,35 @@ class FakeDevice:
                 if not page:
                     break  # Host closed its side: image complete
                 if fail:
-                    return None  # Drop connection without FLASH_OK
+                    return False  # Drop connection without FLASH_OK
                 image += page
+
+            if self.corrupt_transfers:
+                self.corrupt_transfers -= 1
+                image[0] ^= 0xFF
+            if header and (len(image) != size or zlib.crc32(image) != crc):
+                conn.sendall(b"FLASH_ERROR\0")
+                return False
             conn.sendall(b"FLASH_OK\0")
             return bytes(image)
 
-    def _bootloader_updater(self) -> None:
+    def _listen_until_flashed(self, failures: str,
+                              header: bool = True) -> bytes | None:
+        """Listens again after each failed transfer, like the firmware."""
         while True:
-            fail = self.fail_app_flashes > 0
-            self.fail_app_flashes -= fail
-            image = self._receive_image(fail)
-            if image is not None:
-                break
-            if not fail:
-                return  # Accept timeout (test teardown)
+            fail = getattr(self, failures) > 0
+            setattr(self, failures, getattr(self, failures) - fail)
+            image = self._receive_image(fail, header)
+            if image is None:
+                return None  # Accept timeout
+            if image is not False:
+                return image
+
+    def _bootloader_updater(self) -> None:
+        image = self._listen_until_flashed(
+            "fail_app_flashes", header=not self.legacy_bootloader)
+        if image is None:
+            return  # Test teardown
         if self.corrupt_app:
             image = image[:-1] + bytes([image[-1] ^ 0xFF])
         self.app = image
@@ -126,9 +165,10 @@ class FakeDevice:
         self._dhcp_later()
 
     def _app_bootloader_updater(self) -> None:
-        fail = self.fail_boot_flashes > 0
-        self.fail_boot_flashes -= fail
-        image = self._receive_image(fail)
+        # Simplified: the firmware only returns on timeout before the erase,
+        # after it waits for the flasher to reconnect
+        image = self._listen_until_flashed("fail_boot_flashes")
         if image is not None:
             self.boot = image
+            self.legacy_bootloader = False  # New bootloader with verification
         self.mode = "app"  # Returns to the application, no reset

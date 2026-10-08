@@ -29,6 +29,8 @@ class Config:
     flash_ok_timeout: float = 10.0
     flash_attempts: int = 3
     beep: bool = True
+    # Boards still have the bootloader without image header support
+    legacy_bootloader: bool = False
 
 
 def parse_args(argv=None) -> Config:
@@ -49,5 +51,11 @@ def parse_args(argv=None) -> Config:
     p.add_argument("--unplug-debounce", type=float, default=d.unplug_debounce)
     p.add_argument("--flash-attempts", type=int, default=d.flash_attempts)
     p.add_argument("--no-beep", dest="beep", action="store_false")
+    p.add_argument("--legacy-bootloader", action="store_true",
+                   help="the boards still have the old bootloader: send the "
+                   "application without the image header (size, CRC32). The "
+                   "new bootloader is always sent with the header, because "
+                   "the new application flashes it. Not needed for boards "
+                   "that already have the new bootloader")
     args = p.parse_args(argv)
     return Config(**{k: v for k, v in vars(args).items()})

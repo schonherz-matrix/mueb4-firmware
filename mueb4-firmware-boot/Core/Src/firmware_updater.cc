@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "crc.h"
 #include "i2c.h"
 #include "main.h"
 #include "wiznet_callbacs.h"
@@ -27,6 +28,14 @@ constexpr std::uint16_t kEui48MacStartAddress{0xFAu};
 constexpr std::uint8_t kDhcpSocketSocket{0u};
 constexpr std::uint8_t kFirmwareUpdaterSocket{1u};
 constexpr std::uint8_t kEepromAddress{0b10100001u};
+
+/// Image header: size and CRC-32 (same as zlib.crc32), big endian
+constexpr std::size_t kImageHeaderSize{8u};
+
+std::uint32_t ReadBigEndian(const std::uint8_t *data) {
+  return std::uint32_t{data[0]} << 24u | std::uint32_t{data[1]} << 16u |
+         std::uint32_t{data[2]} << 8u | std::uint32_t{data[3]};
+}
 }  // namespace
 
 extern "C" {
@@ -138,6 +147,31 @@ restart_update:
     }
   }
 
+  // Validate the image header before erasing anything
+  while (getSn_RX_RSR(kFirmwareUpdaterSocket) < kImageHeaderSize) {
+    if (firmware_update_timeout == 10u) {
+      HAL_NVIC_SystemReset();
+    }
+
+    getsockopt(kFirmwareUpdaterSocket, SO_STATUS, &status);
+    if (status != SOCK_ESTABLISHED) {
+      close(kFirmwareUpdaterSocket);
+      goto restart_update;
+    }
+  }
+
+  std::array<std::uint8_t, kImageHeaderSize> header;
+  recv(kFirmwareUpdaterSocket, header.data(), kImageHeaderSize);
+  const std::uint32_t image_size{ReadBigEndian(header.data())};
+  const std::uint32_t image_crc{ReadBigEndian(header.data() + 4u)};
+  if (image_size == 0u || image_size % 4u != 0u ||
+      image_size > kPages * FLASH_PAGE_SIZE) {
+    send(kFirmwareUpdaterSocket, (std::uint8_t *)"FLASH_ERROR", 12u);
+    disconnect(kFirmwareUpdaterSocket);
+    close(kFirmwareUpdaterSocket);
+    goto restart_update;
+  }
+
   /* The function HAL_FLASH_Unlock() should be called before to unlock the FLASH
    * interface
    */
@@ -162,6 +196,8 @@ restart_update:
       reinterpret_cast<std::uint32_t *>(flash_page_buffer.data())};
   std::size_t buffered_size{0u};
   std::uint32_t base_address{kBaseAddress};
+  // Programmed last, the application stays invalid until it is verified
+  std::uint32_t initial_stack_pointer{0xFFFFFFFFu};
   bool stream_ended;
   do {
     // Status first, data received before FIN is already in RX buffer
@@ -203,14 +239,19 @@ restart_update:
       // Round up to whole words
       const std::size_t write_size{(buffered_size + 3u) & ~std::size_t{3u}};
 
-      // Overwrite protection
-      if (base_address + write_size > kBaseAddress + kPages * 1024u) {
+      // Overwrite protection, image_size is checked against the flash size
+      if (base_address + write_size > kBaseAddress + image_size) {
         // At this point no return to main program, need to restart update
         close(kFirmwareUpdaterSocket);
         goto restart_update;
       }
 
       for (std::size_t i{0u}; i < write_size / 4u; i++) {
+        if (base_address + i * 4u == kBaseAddress) {
+          initial_stack_pointer = flash_page_buffer_p[i];
+          continue;
+        }
+
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, base_address + i * 4u,
                               flash_page_buffer_p[i]) != HAL_OK) {
           close(kFirmwareUpdaterSocket);
@@ -222,6 +263,22 @@ restart_update:
       buffered_size = 0u;
     }
   } while (!stream_ended);
+
+  // Verify what was written to flash, the first word is not programmed yet
+  HAL_CRC_Calculate(&hcrc, &initial_stack_pointer, 1u);
+  const std::uint32_t written_crc{~HAL_CRC_Accumulate(
+      &hcrc, reinterpret_cast<std::uint32_t *>(kBaseAddress + 4u),
+      image_size / 4u - 1u)};
+
+  // On error the first word stays erased, main() won't start the application
+  if (base_address != kBaseAddress + image_size || written_crc != image_crc ||
+      HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, kBaseAddress,
+                        initial_stack_pointer) != HAL_OK) {
+    send(kFirmwareUpdaterSocket, (std::uint8_t *)"FLASH_ERROR", 12u);
+    disconnect(kFirmwareUpdaterSocket);
+    close(kFirmwareUpdaterSocket);
+    goto restart_update;
+  }
 
   send(kFirmwareUpdaterSocket, (std::uint8_t *)"FLASH_OK", 9u);
   disconnect(kFirmwareUpdaterSocket);

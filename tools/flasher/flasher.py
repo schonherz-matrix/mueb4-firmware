@@ -61,6 +61,8 @@ def main(argv=None) -> None:
           f"CRC32 0x{zlib.crc32(app_image):08X}")
     print(f"Bootloader: {cfg.boot_bin}  {len(boot_image)} bytes  "
           f"CRC32 0x{zlib.crc32(boot_image):08X}")
+    if cfg.legacy_bootloader:
+        print("Legacy:     app is sent without image header (old bootloader)")
     print(f"Results:    {cfg.results_csv}\n")
 
     link = LinkMonitor(cfg.iface)
