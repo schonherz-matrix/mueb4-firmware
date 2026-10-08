@@ -42,7 +42,7 @@ _estack = ORIGIN(RAM3) + LENGTH(RAM3); /* end of "RAM3" Ram type memory */
 _app_address = ORIGIN(FLASH) + LENGTH(FLASH);
 
 /* Application flash pages */
-_app_pages = 64 - (LENGTH(FLASH) / 1000);
+_app_pages = 64 - (LENGTH(FLASH) / 1024);
 
 /* Firmware updater enabler */
 firmware_update_enabler = 0x200000c0;

@@ -39,7 +39,7 @@ ENTRY(Reset_Handler)
 _estack = ORIGIN(RAM3) + LENGTH(RAM3); /* end of "RAM3" Ram type memory */
 
 /* Bootloader flash pages */
-_bootloader_pages = 64 - (LENGTH(FLASH) / 1000);
+_bootloader_pages = 64 - (LENGTH(FLASH) / 1024);
 
 _Min_Heap_Size = 0x200 ; /* required amount of heap */
 _Min_Stack_Size = 0xc00; /* required amount of stack */
