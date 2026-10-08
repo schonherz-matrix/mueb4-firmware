@@ -201,4 +201,8 @@ SECTIONS
   }
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
+
+  /* Must match the application's FLASH origin (application Debug, Release) */
+  ASSERT(_app_address == 0x8005000,
+         "Application start changed: update ORIGIN(FLASH) in mueb4-firmware-app/STM32F030C8TX_FLASH.ld and this ASSERT")
 }

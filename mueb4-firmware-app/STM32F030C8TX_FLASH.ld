@@ -213,16 +213,17 @@ SECTIONS
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 
+  /* Main program flash size, the initial values of .data are the last in
+   * FLASH. Outside of an output section, so the addresses are absolute.
+   */
+  _main_program_size = LOADADDR(.data) + SIZEOF(.data) - ORIGIN(FLASH);
+
+  /* Bootloader flash size */
+  _bootloader_size = ORIGIN(FLASH) - 0x8000000;
+
   ASSERT(ADDR(.firmware_update_enabler) == 0x200000C0,
          "firmware_update_enabler moved, the bootloader reads 0x200000C0")
-  
-  /* Calculate main program flash size */
-  ._main_program_size : {
-  	_main_program_size = . - ORIGIN(FLASH);
-  } >FLASH
-
-  /* Calculate bootloader flash size */
-  ._bootloader_size : {
-  	_bootloader_size = ORIGIN(FLASH) - 0x8000000;
-  } >FLASH
+  /* Must match the bootloader's FLASH end (bootloader Release) */
+  ASSERT(ORIGIN(FLASH) == 0x8005000,
+         "Application start changed: update LENGTH(FLASH) in mueb4-firmware-boot/STM32F030C8TX_FLASH.ld and this ASSERT")
 }
