@@ -91,9 +91,10 @@ class Network final {
 
   /**
    * Handles remote command.
+   * Not inlined, its packet buffer must not stay on the stack in Step().
    * @see #Command.
    */
-  void HandleCommandProtocol();
+  [[gnu::noinline]] void HandleCommandProtocol();
 
   void BootloaderFirmwareUpdater();
 
@@ -141,6 +142,8 @@ class Network final {
   bool force_synchronization_{false};
 
   bool art_net_data_mode{false};
+
+  bool bootloader_firmware_update_requested_{false};
 };
 
 #endif  // MUEB4_FIRMWARE_CORE_INC_NETWORK_H_

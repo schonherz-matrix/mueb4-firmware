@@ -79,6 +79,12 @@ void Network::Step() {
       HandleCommandProtocol();
     }
 
+    // Called outside of HandleCommandProtocol() to not stack its packet buffer
+    if (bootloader_firmware_update_requested_) {
+      bootloader_firmware_update_requested_ = false;
+      BootloaderFirmwareUpdater();
+    }
+
     HAL_NVIC_DisableIRQ(TIM14_IRQn);
     HAL_NVIC_DisableIRQ(TIM16_IRQn);
     HAL_NVIC_DisableIRQ(TIM17_IRQn);
@@ -569,7 +575,7 @@ void Network::HandleCommandProtocol() {
       break;
     }
     case Command::kStartBootloaderFirmwareUpdate: {
-      BootloaderFirmwareUpdater();
+      bootloader_firmware_update_requested_ = true;
       break;
     }
     case Command::kSetArtNet:
