@@ -56,6 +56,19 @@ static const char *const status_format{
     // clang-format on
 };
 
+/**
+ * E1.31 6.7.2 sequence numbering, also used for Art-Net.
+ * The difference is calculated in 8 bit to handle the wrap around.
+ * @return True if the packet is out of order and has to be discarded
+ */
+static bool IsSequenceOutOfOrder(const std::uint8_t &sequence_number,
+                                 const std::uint8_t &last_sequence_number) {
+  const auto difference{
+      static_cast<std::int8_t>(sequence_number - last_sequence_number)};
+
+  return difference <= 0 && difference > -20;
+}
+
 Network &Network::Instance() {
   static Network network;
 
@@ -320,12 +333,12 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
         e131DataPacket->framing_layer.options & 0x40u;
     const bool force_synchronization =
         e131DataPacket->framing_layer.options & 0x20u;
-    if (const auto sequence_number =
-            e131DataPacket->framing_layer.sequence_number -
-            data_sequence_number_;
-        e131DataPacket->framing_layer.vector != VECTOR_E131_DATA_PACKET ||
-        (data_sequence_number_ > 0u && sequence_number <= 0 &&
-         sequence_number > -20) ||
+    if (e131DataPacket->framing_layer.vector != VECTOR_E131_DATA_PACKET ||
+        (data_sequence_number_ > 0u &&
+         IsSequenceOutOfOrder(e131DataPacket->framing_layer.sequence_number,
+                              data_sequence_number_)) ||
+        // The sync socket also receives the sync universe's data packets
+        e131DataPacket->framing_layer.universe != universe_number_ ||
         e131DataPacket->framing_layer.universe == 0u ||
         e131DataPacket->framing_layer.universe > 63999u ||
         e131DataPacket->framing_layer.priority > 200u ||
@@ -396,13 +409,11 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
     const auto e131SyncPacket{
         reinterpret_cast<const E131SyncPacket *>(buffer.data())};
 
-    if (const auto sequence_number =
-            e131SyncPacket->framing_layer.sequence_number -
-            sync_sequence_number_;
-        e131SyncPacket->framing_layer.vector !=
+    if (e131SyncPacket->framing_layer.vector !=
             VECTOR_E131_EXTENDED_SYNCHRONIZATION ||
-        (sync_sequence_number_ > 0u && sequence_number <= 0 &&
-         sequence_number > -20) ||
+        (sync_sequence_number_ > 0u &&
+         IsSequenceOutOfOrder(e131SyncPacket->framing_layer.sequence_number,
+                              sync_sequence_number_)) ||
         e131SyncPacket->framing_layer.synchronization_address == 0u ||
         e131SyncPacket->framing_layer.synchronization_address !=
             synchronization_address_) {
@@ -450,16 +461,8 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
       }
 
       const auto art_dmx{reinterpret_cast<const ArtDmx *>(buffer.data())};
-      if (art_dmx->sequence != 0u) {
-        if (const auto sequence_number =
-                art_dmx->sequence - data_sequence_number_;
-            sequence_number <= 0 && sequence_number > -20) {
-          return;
-        }
-
-        data_sequence_number_ = art_dmx->sequence;
-      }
-
+      // Filter other universes before sequence check, they have their own
+      // sequence numbers
       if (art_dmx->net != art_poll_reply_.net_switch ||
           art_dmx->sub_uni !=
               (art_poll_reply_.sub_switch << 4u | art_poll_reply_.sw_in[0]) ||
@@ -467,6 +470,16 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
           art_dmx->length < 384u ||
           (last_ip_address_[0] != 0u && last_ip_address_ != server_address)) {
         return;
+      }
+
+      // Sequence 0 disables the check, data_sequence_number_ is 0 at start
+      if (art_dmx->sequence != 0u) {
+        if (data_sequence_number_ != 0u &&
+            IsSequenceOutOfOrder(art_dmx->sequence, data_sequence_number_)) {
+          return;
+        }
+
+        data_sequence_number_ = art_dmx->sequence;
       }
       last_ip_address_ = server_address;
 
