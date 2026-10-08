@@ -192,6 +192,20 @@ SECTIONS
     . = ALIGN(8);
   } >RAM2
 
+  /* Release only: pads the image with the erased flash value up to the end of
+   * FLASH, so the .bin and .hex files cover the whole bootloader region. The
+   * application's kGetBootloaderFirmwareChecksum and the flasher's checksum
+   * cover all of it. Placed after the initial values of .data, the last data
+   * in FLASH. The offset is a difference of absolute addresses, a plain number
+   * inside this output section.
+   */
+  .padding :
+  {
+    FILL(0xFF);
+    . = . + (ORIGIN(FLASH) + LENGTH(FLASH) - (LOADADDR(.data) + SIZEOF(.data)) - 1);
+    BYTE(0xFF);
+  } >FLASH
+
   /* Remove information from the compiler libraries */
   /DISCARD/ :
   {
