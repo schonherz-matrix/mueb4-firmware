@@ -53,7 +53,8 @@ Panel& Panel::GetPanel(const UART_HandleTypeDef* huartx) {
 void Panel::Step() {
   if (heartbeat_received_) {
     heartbeat_received_ = false;
-    // Read heartbeat_ written by the interrupt after the flag
+    // Compiler barrier only, no instruction: heartbeat_ isn't volatile, the
+    // compiler must not read it before the flag
     std::atomic_signal_fence(std::memory_order_acquire);
     HandleHeartbeat();
   }
