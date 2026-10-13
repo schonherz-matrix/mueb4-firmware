@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <boost/endian/conversion.hpp>
 #include <cstddef>
 #include <cstdint>
 
@@ -23,11 +24,6 @@ const std::uint32_t kPages{reinterpret_cast<std::uint32_t>(_bootloader_pages)};
 
 /// Image header: size and CRC-32 (same as zlib.crc32), big endian
 constexpr std::size_t kImageHeaderSize{8u};
-
-std::uint32_t ReadBigEndian(const std::uint8_t *data) {
-  return std::uint32_t{data[0]} << 24u | std::uint32_t{data[1]} << 16u |
-         std::uint32_t{data[2]} << 8u | std::uint32_t{data[3]};
-}
 }  // namespace
 
 volatile std::uint8_t bootloader_firmware_update_timeout{0u};
@@ -99,8 +95,9 @@ restart_update:
 
   std::array<std::uint8_t, kImageHeaderSize> header;
   recv(kFirmwareUpdaterSocket, header.data(), kImageHeaderSize);
-  const std::uint32_t image_size{ReadBigEndian(header.data())};
-  const std::uint32_t image_crc{ReadBigEndian(header.data() + 4u)};
+  const std::uint32_t image_size{boost::endian::load_big_u32(header.data())};
+  const std::uint32_t image_crc{
+      boost::endian::load_big_u32(header.data() + 4u)};
   if (image_size == 0u || image_size % 4u != 0u ||
       image_size > kPages * FLASH_PAGE_SIZE) {
     send(kFirmwareUpdaterSocket, (std::uint8_t *)"FLASH_ERROR", 12u);
