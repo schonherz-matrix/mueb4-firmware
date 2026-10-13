@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2022 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -98,6 +98,7 @@ void Error_Handler(void);
 #define PANEL_3V3_RIGHT_GPIO_Port GPIOB
 #define PANEL_3V3_LEFT_Pin GPIO_PIN_9
 #define PANEL_3V3_LEFT_GPIO_Port GPIOB
+
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

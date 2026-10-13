@@ -126,8 +126,7 @@ class Panel final {
   /// Send white balance data to panel.
   void SendWhiteBalance(const WhiteBalanceData& white_balance);
 
-  Panel& SetColorData(std::ranges::subrange<const std::uint8_t*> data,
-                      bool _8bit);
+  Panel& SetColorData(std::span<const std::uint8_t> data, bool _8bit);
 
   /// Called from UART RX interrupt, Step() handles the heartbeat.
   void Heartbeat();

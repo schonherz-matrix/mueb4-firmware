@@ -41,7 +41,7 @@ _estack = ORIGIN(RAM2) + LENGTH(RAM2); /* end of "RAM2" Ram type memory */
 /* Bootloader flash pages */
 _bootloader_pages = 64 - (LENGTH(FLASH) / 1024);
 
-_Min_Heap_Size = 0x200 ; /* required amount of heap */
+_Min_Heap_Size = 0x200; /* required amount of heap */
 _Min_Stack_Size = 0xc00; /* required amount of stack */
 
 /* Memories definition

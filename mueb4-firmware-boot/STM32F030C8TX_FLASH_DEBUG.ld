@@ -49,7 +49,7 @@ _app_pages = 64 - (LENGTH(FLASH) / 1024);
  */
 firmware_update_enabler = 0x200000c0;
 
-_Min_Heap_Size = 0x200 ; /* required amount of heap */
+_Min_Heap_Size = 0x200; /* required amount of heap */
 _Min_Stack_Size = 0xc00; /* required amount of stack */
 
 /* Memories definition

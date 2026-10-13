@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2022 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -65,7 +65,7 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LED_JOKER_Pin|LED_SERVER_Pin|LED_DHCP_Pin|LED_HEART_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PtPin */
+  /*Configure GPIO pin : PANEL_12V_LEFT_Pin */
   GPIO_InitStruct.Pin = PANEL_12V_LEFT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -78,14 +78,14 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PAPin PAPin */
+  /*Configure GPIO pins : SPI1_NSS_Pin PANEL_12V_RIGHT_Pin */
   GPIO_InitStruct.Pin = SPI1_NSS_Pin|PANEL_12V_RIGHT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PBPin PB10 PB11 PB3
+  /*Configure GPIO pins : W5500_INTN_Pin PB10 PB11 PB3
                            PB4 PB5 PB6 PB7 */
   GPIO_InitStruct.Pin = W5500_INTN_Pin|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_3
                           |GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
@@ -93,8 +93,8 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PBPin PBPin PBPin PBPin
-                           PBPin PBPin PBPin */
+  /*Configure GPIO pins : W5500_RSTN_Pin LED_JOKER_Pin LED_SERVER_Pin LED_DHCP_Pin
+                           LED_HEART_Pin PANEL_3V3_RIGHT_Pin PANEL_3V3_LEFT_Pin */
   GPIO_InitStruct.Pin = W5500_RSTN_Pin|LED_JOKER_Pin|LED_SERVER_Pin|LED_DHCP_Pin
                           |LED_HEART_Pin|PANEL_3V3_RIGHT_Pin|PANEL_3V3_LEFT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -102,7 +102,7 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PtPin */
+  /*Configure GPIO pin : USER_INPUT_BUTTON_Pin */
   GPIO_InitStruct.Pin = USER_INPUT_BUTTON_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;

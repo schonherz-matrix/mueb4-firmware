@@ -233,8 +233,7 @@ void Panel::SendWhiteBalance(const WhiteBalanceData& white_balance) {
                         static_cast<std::uint16_t>(white_balance_data_.size()));
 }
 
-Panel& Panel::SetColorData(std::ranges::subrange<const std::uint8_t*> data,
-                           bool _8bit) {
+Panel& Panel::SetColorData(std::span<const std::uint8_t> data, bool _8bit) {
   std::uint8_t i{0u};
   std::ranges::transform(data.begin(), data.end(), color_data_.begin() + 1u,
                          [&](const std::uint8_t& c) -> std::uint8_t {
