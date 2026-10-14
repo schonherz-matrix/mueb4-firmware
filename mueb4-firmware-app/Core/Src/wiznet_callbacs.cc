@@ -9,29 +9,44 @@ void CrisEn() { __disable_irq(); }
 
 void CrisEx() { __enable_irq(); }
 
-void CsSel() {
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI1_NSS_Pin, GPIO_PIN_RESET);
+/**
+ * Full-duplex transfer of one byte, register level instead of HAL.
+ * The HAL call overhead is more than the transfer time of the short W5500
+ * accesses. Every byte is waited for, the RX FIFO stays empty.
+ */
+static std::uint8_t SpiTransfer(std::uint8_t data) {
+  SPI_TypeDef *const spi{hspi1.Instance};
+  // 8 bit access, a 16 bit write would send 2 bytes
+  auto *const dr{reinterpret_cast<volatile std::uint8_t *>(&spi->DR)};
+
+  // Enabled by the first transfer like HAL does
+  if (!(spi->CR1 & SPI_CR1_SPE)) {
+    spi->CR1 |= SPI_CR1_SPE;
+  }
+
+  *dr = data;
+  while (!(spi->SR & SPI_SR_RXNE)) {
+  }
+
+  return *dr;
 }
 
-void CsDesel() {
-  HAL_GPIO_WritePin(SPI1_NSS_GPIO_Port, SPI1_NSS_Pin, GPIO_PIN_SET);
-}
+void CsSel() { SPI1_NSS_GPIO_Port->BRR = SPI1_NSS_Pin; }
 
-std::uint8_t SpiRb() {
-  std::uint8_t pData;
-  HAL_SPI_Receive(&hspi1, &pData, 1u, HAL_MAX_DELAY);
+void CsDesel() { SPI1_NSS_GPIO_Port->BSRR = SPI1_NSS_Pin; }
 
-  return pData;
-}
+std::uint8_t SpiRb() { return SpiTransfer(0xFFu); }
 
-void SpiWb(std::uint8_t pData) {
-  HAL_SPI_Transmit(&hspi1, &pData, 1u, HAL_MAX_DELAY);
-}
+void SpiWb(std::uint8_t pData) { SpiTransfer(pData); }
 
 void SpiRBurst(std::uint8_t *pData, std::uint16_t Size) {
-  HAL_SPI_Receive(&hspi1, pData, Size, HAL_MAX_DELAY);
+  for (std::uint16_t i{0u}; i < Size; i++) {
+    pData[i] = SpiTransfer(0xFFu);
+  }
 }
 
 void SpiWBurst(std::uint8_t *pData, std::uint16_t Size) {
-  HAL_SPI_Transmit(&hspi1, pData, Size, HAL_MAX_DELAY);
+  for (std::uint16_t i{0u}; i < Size; i++) {
+    SpiTransfer(pData[i]);
+  }
 }
