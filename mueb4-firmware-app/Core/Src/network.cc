@@ -98,6 +98,7 @@ void Network::Step() {
 
   if (sync_timed_out_) {
     sync_timed_out_ = false;
+    sync_lost_ = synced_;
     synced_ = false;
   }
 
@@ -124,12 +125,14 @@ void Network::Step() {
       BootloaderFirmwareUpdater();
     }
 
-    if (!art_net_data_mode && getSn_RX_RSR(kE131SyncSocket) > 0u) {
-      ReceiveUdpPacket(kE131SyncSocket, &Network::HandleE131Packet);
-    }
-
+    // Data before sync, otherwise a sync packet waiting with the data would
+    // output the previous frame
     if (!art_net_data_mode && getSn_RX_RSR(kE131Socket) > 0u) {
       ReceiveUdpPacket(kE131Socket, &Network::HandleE131Packet);
+    }
+
+    if (!art_net_data_mode && getSn_RX_RSR(kE131SyncSocket) > 0u) {
+      ReceiveUdpPacket(kE131SyncSocket, &Network::HandleE131Packet);
     }
 
     for (std::uint8_t i{0u};
@@ -211,11 +214,6 @@ void Network::IpConflict() const {
 void Network::StreamTerminated() {
   HAL_GPIO_WritePin(LED_SERVER_GPIO_Port, LED_SERVER_Pin, GPIO_PIN_RESET);
 
-  if (!art_net_data_mode && synchronization_address_ != 0u &&
-      !force_synchronization_) {
-    return;
-  }
-
   cid_.fill(0u);
   last_ip_address_.fill(0u);
   synchronization_address_ = 0;
@@ -223,6 +221,7 @@ void Network::StreamTerminated() {
   sync_sequence_number_ = 0;
   priority_ = 0;
   synced_ = false;
+  sync_lost_ = false;
   force_synchronization_ = false;
 
   HAL_TIM_Base_Stop_IT(&htim16);
@@ -365,10 +364,26 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number,
     const auto e131DataPacket{
         reinterpret_cast<const E131DataPacket *>(buffer.data())};
 
+    const bool preview_data = e131DataPacket->framing_layer.options & 0x80u;
     const bool stream_terminated =
         e131DataPacket->framing_layer.options & 0x40u;
     const bool force_synchronization =
         e131DataPacket->framing_layer.options & 0x20u;
+
+    // E1.31 6.7.1: data loss is specific to a source and universe, only the
+    // current source can terminate the node's universe
+    if (stream_terminated) {
+      if (e131DataPacket->framing_layer.vector == VECTOR_E131_DATA_PACKET &&
+          !preview_data &&
+          e131DataPacket->framing_layer.universe == universe_number_ &&
+          (cid_ == decltype(cid_){} ||
+           e131DataPacket->root_layer.cid == cid_)) {
+        StreamTerminated();
+      }
+
+      return;
+    }
+
     if (e131DataPacket->framing_layer.vector != VECTOR_E131_DATA_PACKET ||
         (data_sequence_number_ > 0u &&
          IsSequenceOutOfOrder(e131DataPacket->framing_layer.sequence_number,
@@ -381,19 +396,15 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number,
         e131DataPacket->framing_layer.priority < priority_ ||
         (data_sequence_number_ > 0u && e131DataPacket->root_layer.cid != cid_ &&
          e131DataPacket->framing_layer.priority == priority_) ||
-        e131DataPacket->framing_layer.options & 0x80u || stream_terminated ||
-        (synchronization_address_ != 0u &&
-         (!force_synchronization && !synced_)) ||
+        preview_data ||
         e131DataPacket->dmp_layer.vector != VECTOR_DMP_SET_PROPERTY ||
         e131DataPacket->dmp_layer.address_type_and_data_type != 0xa1u ||
         e131DataPacket->dmp_layer.first_property_address != 0x0000u ||
         e131DataPacket->dmp_layer.address_increment != 0x0001u ||
         e131DataPacket->dmp_layer.property_value_count > 513u ||
-        e131DataPacket->dmp_layer.property_value_count < 384u) {
-      if (stream_terminated) {
-        StreamTerminated();
-      }
-
+        e131DataPacket->dmp_layer.property_value_count < 384u ||
+        // Only null START Code data is color data
+        e131DataPacket->dmp_layer.start_code != 0u) {
       return;
     }
     cid_ = e131DataPacket->root_layer.cid;
@@ -401,38 +412,37 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number,
     force_synchronization_ = force_synchronization;
     data_sequence_number_ = e131DataPacket->framing_layer.sequence_number;
 
-    if (synchronization_address_ != 0u &&
-        e131DataPacket->framing_layer.synchronization_address != 0u &&
-        synchronization_address_ !=
-            e131DataPacket->framing_layer.synchronization_address) {
-      return;
-    }
-
-    if (synchronization_address_ == 0u &&
-        e131DataPacket->framing_layer.synchronization_address != 0u) {
-      const auto lowByte = static_cast<std::uint8_t>(
-          e131DataPacket->framing_layer.synchronization_address & 0x00FFu);
-      const auto highByte = static_cast<std::uint8_t>(
-          (e131DataPacket->framing_layer.synchronization_address & 0xFF00u) >>
-          8u);
-      if (highByte != 0u || lowByte != universe_number_) {
-        OpenMulticastSocket(kE131SyncSocket, highByte, lowByte);
-      }
-
-      synced_ = false;
-    } else if (synchronization_address_ != 0u &&
-               e131DataPacket->framing_layer.synchronization_address == 0u) {
-      synced_ = false;
+    if (const std::uint16_t synchronization_address{
+            e131DataPacket->framing_layer.synchronization_address};
+        synchronization_address != synchronization_address_) {
+      // E1.31 6.2.4.1: a new address is synchronized only after its first
+      // sync packet
       close(kE131SyncSocket);
-    }
-    synchronization_address_ =
-        e131DataPacket->framing_layer.synchronization_address;
+      synced_ = false;
+      sync_lost_ = false;
+      sync_sequence_number_ = 0u;
+      synchronization_address_ = synchronization_address;
 
+      const auto low_byte{
+          static_cast<std::uint8_t>(synchronization_address & 0x00FFu)};
+      const auto high_byte{
+          static_cast<std::uint8_t>((synchronization_address & 0xFF00u) >> 8u)};
+      // The node's own universe arrives on the data socket
+      if (synchronization_address != 0u &&
+          (high_byte != 0u || low_byte != universe_number_)) {
+        OpenMulticastSocket(kE131SyncSocket, high_byte, low_byte);
+      }
+    }
+
+    // Data is kept for the next sync packet, output immediately when
+    // unsynchronized. E1.31 6.2.6: after the sync is lost, Force_Synchronization
+    // decides whether to output or wait for the sync to resume.
     SetPanelColorData(std::span(e131DataPacket->dmp_layer.property_values)
                           .subspan(dmx_buffer_offset_)
                           .first<kPanelDataSize>());
 
-    if (synchronization_address_ == 0u) {
+    if (synchronization_address_ == 0u ||
+        (!synced_ && (!sync_lost_ || force_synchronization_))) {
       left_panel.SendColorData();
       right_panel.SendColorData();
     }
@@ -462,6 +472,7 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number,
     left_panel.SendColorData();
     right_panel.SendColorData();
     synced_ = true;
+    sync_lost_ = false;
 
     HAL_TIM_Base_Stop_IT(&htim17);
     HAL_NVIC_ClearPendingIRQ(TIM17_IRQn);

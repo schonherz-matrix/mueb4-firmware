@@ -193,6 +193,9 @@ class Network final {
 
   bool synced_{false};
 
+  /// E1.31 sync packets stopped after the node was synchronized.
+  bool sync_lost_{false};
+
   bool force_synchronization_{false};
 
   bool art_net_data_mode{false};
