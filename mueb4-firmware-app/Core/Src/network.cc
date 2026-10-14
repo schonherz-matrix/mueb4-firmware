@@ -9,6 +9,8 @@
 #include <dhcp.h>
 #include <socket.h>
 
+#include <boost/endian/conversion.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -112,27 +114,28 @@ void Network::Step() {
     HAL_GPIO_WritePin(LED_DHCP_GPIO_Port, LED_DHCP_Pin, GPIO_PIN_SET);
 
     if (getSn_RX_RSR(kCommandSocket) > 0u) {
-      HandleCommandProtocol();
+      ReceiveUdpPacket(kCommandSocket, &Network::HandleCommandProtocol);
     }
 
-    // Called outside of HandleCommandProtocol() to not stack its packet buffer
+    // Called outside of HandleCommandProtocol(), the command packet is
+    // released before the update starts
     if (bootloader_firmware_update_requested_) {
       bootloader_firmware_update_requested_ = false;
       BootloaderFirmwareUpdater();
     }
 
     if (!art_net_data_mode && getSn_RX_RSR(kE131SyncSocket) > 0u) {
-      HandleE131Packet(kE131SyncSocket);
+      ReceiveUdpPacket(kE131SyncSocket, &Network::HandleE131Packet);
     }
 
     if (!art_net_data_mode && getSn_RX_RSR(kE131Socket) > 0u) {
-      HandleE131Packet(kE131Socket);
+      ReceiveUdpPacket(kE131Socket, &Network::HandleE131Packet);
     }
 
     for (std::uint8_t i{0u};
          i < kMaxArtNetPacketsPerStep && getSn_RX_RSR(kArtNetSocket) > 0u;
          i++) {
-      HandleArtNetPacket();
+      ReceiveUdpPacket(kArtNetSocket, &Network::HandleArtNetPacket);
     }
   } else {
     HAL_GPIO_WritePin(LED_JOKER_GPIO_Port, LED_JOKER_Pin, GPIO_PIN_RESET);
@@ -287,26 +290,45 @@ Network::Network() {
   socket(kArtNetSocket, Sn_MR_UDP, kArtNetPort, 0x00u);
 }
 
-auto Network::CheckIpAddress(const std::uint8_t &socket_number) {
-  struct Return {
-    std::int32_t size{0u};
-    std::array<std::uint8_t, 1472u> buffer{};
-    std::array<std::uint8_t, 4u> server_address{};
-    std::uint16_t server_port{0u};
-  };
-  Return ret;
+void Network::ReceiveUdpPacket(const std::uint8_t &socket_number,
+                               PacketHandler handler) {
+  const auto read_pointer{
+      static_cast<std::uint16_t>(getSn_RX_RD(socket_number))};
 
-  ret.size = recvfrom(socket_number, ret.buffer.data(), ret.buffer.size(),
-                      ret.server_address.data(), &ret.server_port);
-  if (ret.size <= 0) {
-    return ret;
+  // Stored by the W5500 before the payload: sender IP address, port, size
+  std::array<std::uint8_t, 8u> info;
+  ReadRxBuffer(socket_number, read_pointer, info);
+  const UdpPacket packet{
+      {info[0], info[1], info[2], info[3]},
+      boost::endian::load_big_u16(info.data() + 4u),
+      boost::endian::load_big_u16(info.data() + 6u),
+      static_cast<std::uint16_t>(read_pointer + info.size())};
+
+  // Servers are in x.x.0.x
+  if (packet.server_address[2] == 0u) {
+    (this->*handler)(socket_number, packet);
   }
 
-  if (ret.server_address[2] != 0u) {
-    ret.size = -1;
+  // Free the whole packet, read or not
+  setSn_RX_RD(socket_number,
+              static_cast<std::uint16_t>(packet.data_pointer + packet.size));
+  setSn_CR(socket_number, Sn_CR_RECV);
+  while (getSn_CR(socket_number)) {
+  }
+}
+
+void Network::ReadUdpPayload(const std::uint8_t &socket_number,
+                             const UdpPacket &packet,
+                             const std::uint16_t &offset,
+                             std::span<std::uint8_t> buffer) {
+  if (offset >= packet.size) {
+    return;
   }
 
-  return ret;
+  ReadRxBuffer(socket_number,
+               static_cast<std::uint16_t>(packet.data_pointer + offset),
+               buffer.first(std::min<std::size_t>(packet.size - offset,
+                                                  buffer.size())));
 }
 
 #pragma clang diagnostic push
@@ -323,12 +345,11 @@ void Network::SetPanelColorData(
 }
 #pragma clang diagnostic pop
 
-void Network::HandleE131Packet(const std::uint8_t &socket_number) {
-  const auto [size, buffer, server_address,
-              server_port]{CheckIpAddress(socket_number)};
-  if (size <= 0) {
-    return;
-  }
+void Network::HandleE131Packet(const std::uint8_t &socket_number,
+                               const UdpPacket &packet) {
+  // Largest E1.31 packet, zeroed for shorter ones
+  std::array<std::uint8_t, sizeof(E131DataPacket)> buffer{};
+  ReadUdpPayload(socket_number, packet, 0u, buffer);
 
   const auto root_layer{reinterpret_cast<const RootLayer *>(buffer.data())};
   if (root_layer->preamble_size != 0x0010u ||
@@ -448,58 +469,29 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
   }
 }
 
-void Network::HandleArtNetPacket() {
-  // Not received with recvfrom(): every node gets all broadcast universes,
-  // reading whole packets over SPI would be too slow. Only the headers and
-  // the node's data are read, the rest is released without reading it.
-  // recvfrom() is never called on this socket, its remaining size stays 0.
-  const auto read_pointer{
-      static_cast<std::uint16_t>(getSn_RX_RD(kArtNetSocket))};
-
-  // W5500 UDP packet info: sender IP address, port, payload size
-  std::array<std::uint8_t, 8u> packet_info{};
-  ReadRxBuffer(kArtNetSocket, read_pointer, packet_info);
-  const std::array<std::uint8_t, 4u> server_address{
-      packet_info[0], packet_info[1], packet_info[2], packet_info[3]};
-  const auto size{
-      static_cast<std::uint16_t>(packet_info[6] << 8u | packet_info[7])};
-
-  ProcessArtNetPacket(
-      static_cast<std::uint16_t>(read_pointer + packet_info.size()), size,
-      server_address);
-
-  setSn_RX_RD(kArtNetSocket, static_cast<std::uint16_t>(
-                                 read_pointer + packet_info.size() + size));
-  setSn_CR(kArtNetSocket, Sn_CR_RECV);
-  while (getSn_CR(kArtNetSocket)) {
-  }
-}
-
-void Network::ProcessArtNetPacket(
-    const std::uint16_t &data_pointer, const std::uint16_t &size,
-    const std::array<std::uint8_t, 4u> &server_address) {
-  if (server_address[2] != 0u || size < sizeof(ArtNetHeader)) {
+void Network::HandleArtNetPacket(const std::uint8_t &socket_number,
+                                 const UdpPacket &packet) {
+  if (packet.size < sizeof(ArtNetHeader)) {
     return;
   }
 
   // Largest header used, zeroed for shorter packets
   std::array<std::uint8_t, sizeof(ArtDmx)> buffer{};
-  ReadRxBuffer(
-      kArtNetSocket, data_pointer,
-      std::span(buffer).first(std::min<std::size_t>(size, buffer.size())));
+  ReadUdpPayload(socket_number, packet, 0u, buffer);
 
-  const auto packet{reinterpret_cast<const ArtNetHeader *>(buffer.data())};
-  if (packet->art_id_op_code.id != kArtNetId || packet->prot_ver != 14u) {
+  const auto header{reinterpret_cast<const ArtNetHeader *>(buffer.data())};
+  if (header->art_id_op_code.id != kArtNetId || header->prot_ver != 14u) {
     return;
   }
 
-  switch (packet->art_id_op_code.op_code) {
+  switch (header->art_id_op_code.op_code) {
     case kOpPoll: {
       // Art-Net 4: unicast to the controller, a broadcast would reach every
       // node's Art-Net socket
       sendto(kArtNetSocket, (std::uint8_t *)&art_poll_reply_,
              sizeof(ArtPollReply),
-             const_cast<std::uint8_t *>(server_address.data()), kArtNetPort);
+             const_cast<std::uint8_t *>(packet.server_address.data()),
+             kArtNetPort);
       break;
     }
     case kOpOutput: {
@@ -516,8 +508,10 @@ void Network::ProcessArtNetPacket(
               (art_poll_reply_.sub_switch << 4u | art_poll_reply_.sw_in[0]) ||
           art_dmx->length < 2u || art_dmx->length > 512u ||
           art_dmx->length < 384u ||
-          size < sizeof(ArtDmx) + dmx_buffer_offset_ + kPanelDataSize ||
-          (last_ip_address_[0] != 0u && last_ip_address_ != server_address)) {
+          packet.size <
+              sizeof(ArtDmx) + dmx_buffer_offset_ + kPanelDataSize ||
+          (last_ip_address_[0] != 0u &&
+           last_ip_address_ != packet.server_address)) {
         return;
       }
 
@@ -530,13 +524,13 @@ void Network::ProcessArtNetPacket(
 
         data_sequence_number_ = art_dmx->sequence;
       }
-      last_ip_address_ = server_address;
+      last_ip_address_ = packet.server_address;
 
       std::array<std::uint8_t, kPanelDataSize> panel_data;
-      ReadRxBuffer(kArtNetSocket,
-                   static_cast<std::uint16_t>(data_pointer + sizeof(ArtDmx) +
-                                              dmx_buffer_offset_),
-                   panel_data);
+      ReadUdpPayload(socket_number, packet,
+                     static_cast<std::uint16_t>(sizeof(ArtDmx) +
+                                                dmx_buffer_offset_),
+                     panel_data);
       SetPanelColorData(panel_data);
 
       if (!synced_) {
@@ -558,7 +552,7 @@ void Network::ProcessArtNetPacket(
         StreamTerminated();
       }
 
-      if (last_ip_address_ != server_address) {
+      if (last_ip_address_ != packet.server_address) {
         return;
       }
 
@@ -579,12 +573,14 @@ void Network::ProcessArtNetPacket(
   }
 }
 
-void Network::HandleCommandProtocol() {
-  auto [size, buffer, server_address,
-        server_port]{CheckIpAddress(kCommandSocket)};
-  if (size <= 0) {
-    return;
-  }
+void Network::HandleCommandProtocol(const std::uint8_t &socket_number,
+                                    const UdpPacket &packet) {
+  // Largest command, zeroed for shorter ones
+  std::array<std::uint8_t, sizeof(WhiteBalance)> buffer{};
+  ReadUdpPayload(socket_number, packet, 0u, buffer);
+  // Replaced by broadcast when the node has no IP address
+  auto server_address{packet.server_address};
+  const auto &server_port{packet.server_port};
 
   const auto command = reinterpret_cast<CommandHeader *>(buffer.data());
   if (command->id != kCommandId) {

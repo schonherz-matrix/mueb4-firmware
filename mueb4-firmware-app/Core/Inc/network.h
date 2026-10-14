@@ -96,36 +96,61 @@ class Network final {
                            const std::uint8_t &third_octet,
                            const std::uint8_t &last_octet) const;
 
-  auto CheckIpAddress(const std::uint8_t &socket_number);
+  /// UDP packet in a socket's W5500 RX buffer.
+  struct UdpPacket {
+    std::array<std::uint8_t, 4u> server_address;
+    std::uint16_t server_port;
+    /// Payload size
+    std::uint16_t size;
+    /// W5500 RX buffer pointer of the payload
+    std::uint16_t data_pointer;
+  };
+
+  /// Handles a packet still in the W5500 RX buffer.
+  using PacketHandler = void (Network::*)(const std::uint8_t &socket_number,
+                                          const UdpPacket &packet);
+
+  /**
+   * Receives a UDP packet, replaces recvfrom() on the UDP sockets.
+   * Calls handler for packets from the server network, then frees the packet.
+   * The handler reads only the bytes it needs with #ReadUdpPayload.
+   * @warning recvfrom() must not be used on these sockets, it would return
+   * the unread rest of a packet in the next call
+   */
+  void ReceiveUdpPacket(const std::uint8_t &socket_number,
+                        PacketHandler handler);
+
+  /**
+   * Reads from the packet's payload at offset.
+   * Reads at most until the end of the payload, the rest of buffer is kept.
+   */
+  static void ReadUdpPayload(const std::uint8_t &socket_number,
+                             const UdpPacket &packet,
+                             const std::uint16_t &offset,
+                             std::span<std::uint8_t> buffer);
 
   /// Sets both panels from the node's part of the DMX data.
   void SetPanelColorData(
       std::span<const std::uint8_t, kPanelDataSize> panel_data) const;
 
   /// Handles animation protocol.
-  void HandleE131Packet(const std::uint8_t &socket_number);
+  void HandleE131Packet(const std::uint8_t &socket_number,
+                        const UdpPacket &packet);
 
   /**
-   * Receives one packet from #kArtNetSocket.
-   * Reads from the W5500 RX buffer directly, only the needed bytes.
+   * Handles an Art-Net packet.
+   * Every node gets all broadcast universes, only the headers and the node's
+   * data are read.
    */
-  void HandleArtNetPacket();
-
-  /**
-   * Handles a received Art-Net packet.
-   * @param data_pointer W5500 RX buffer pointer of the UDP payload
-   * @param size UDP payload size
-   */
-  void ProcessArtNetPacket(const std::uint16_t &data_pointer,
-                           const std::uint16_t &size,
-                           const std::array<std::uint8_t, 4u> &server_address);
+  void HandleArtNetPacket(const std::uint8_t &socket_number,
+                          const UdpPacket &packet);
 
   /**
    * Handles remote command.
-   * Not inlined, its packet buffer must not stay on the stack in Step().
    * @see #Command.
    */
-  [[gnu::noinline]] void HandleCommandProtocol();
+  void HandleCommandProtocol(const std::uint8_t &socket_number,
+                             const UdpPacket &packet);
 
   void BootloaderFirmwareUpdater();
 
