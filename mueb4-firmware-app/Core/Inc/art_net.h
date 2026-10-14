@@ -117,7 +117,7 @@ field */
  output ports are implemented. The maximum value is 4. Nodes can ignore this
  field as the information is implicit in PortTypes[]*/
   const std::array<std::uint8_t, 4u> port_types{
-      0b01000101u}; /* This array defines the
+      0b10000000u}; /* Output port, DMX512. This array defines the
 operation and protocol of each channel. (A product with 4 inputs and 4 outputs
 would report 0xc0, 0xc0, 0xc0, 0xc0). The array length is fixed, independent of
 the number of inputs or outputs physically available on the Node */
@@ -125,12 +125,13 @@ the number of inputs or outputs physically available on the Node */
       0u}; /* This array defines input status of the node */
   const boost::endian::big_uint32_t good_output_a{
       0u}; /* This array defines output status of the node */
-  std::array<std::uint8_t, 4u> sw_in{
-      1u}; /* Bits 3-0 of the 15 bit Port-Address for
+  const std::array<std::uint8_t, 4u> sw_in{
+      0u}; /* Bits 3-0 of the 15 bit Port-Address for
 each  of the 4 possible input ports are encoded  into the low nibble */
-  const boost::endian::big_uint32_t sw_out{
-      0u};                         /* Bits 3-0 of the 15 bit Port-Address
-for each of the 4 possible output ports are encoded into the low nibble */
+  std::array<std::uint8_t, 4u> sw_out{
+      1u}; /* Bits 3-0 of the 15 bit Port-Address
+for each of the 4 possible output ports are encoded into the low nibble.
+Controllers unicast ArtDmx to the universes listed here */
   const std::uint8_t sw_video{0u}; /* Set to 00 when video display is showing
                  local data. Set to 01 when video is showing
                  ethernet data. The field is now deprecated */
@@ -166,7 +167,16 @@ larger or modular product, this is the IP of the root device */
       0b01000000u}; /* This array defines output status of the node */
   const std::uint8_t status_3{0u}; /* General Status register
                                containing bit fields as follows */
-  const std::array<std::uint8_t, 21u> filler{
+  const std::array<std::uint8_t, 6u> default_resp_uid{
+      0u}; /* RDMnet & LLRP Default Responder UID */
+  const boost::endian::big_uint16_t user{
+      0u}; /* Available for user specific data */
+  const boost::endian::big_uint16_t refresh_rate{
+      50u}; /* Maximum refresh rate in Hz at which ArtDmx can be processed,
+0 to 44 means the DMX512 rate of 44 Hz. The controller sends 50 fps */
+  const std::uint8_t background_queue_policy{
+      0u}; /* Only used when Status3 bit 1 is set */
+  const std::array<std::uint8_t, 10u> filler{
       0u}; /* Transmit as zero. For future expansion */
 };
 

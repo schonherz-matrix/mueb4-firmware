@@ -179,8 +179,6 @@ class Network final {
 
   std::array<std::uint8_t, 4u> last_ip_address_{0u};
 
-  const std::array<std::uint8_t, 4u> broadcast_ip_address_{10u, 6u, 255u, 255u};
-
   std::uint16_t dmx_buffer_offset_{0u};
 
   std::uint16_t synchronization_address_{0u};

@@ -181,10 +181,9 @@ void Network::UpdateIp() {
   art_poll_reply_.ip_address = std::to_array(wiz_net_info_.ip);
   art_poll_reply_.bind_ip = art_poll_reply_.ip_address;
 
-  art_poll_reply_.sw_in[0] = universe_number_;
-
-  sendto(kArtNetSocket, (std::uint8_t *)&art_poll_reply_, sizeof(ArtPollReply),
-         const_cast<std::uint8_t *>(broadcast_ip_address_.data()), kArtNetPort);
+  // Art-Net 4: ArtPollReply mustn't be broadcast, the controller learns the
+  // change from the reply to its next ArtPoll
+  art_poll_reply_.sw_out[0] = universe_number_;
 }
 
 void Network::IpAssign() {
@@ -510,7 +509,7 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number,
       // sequence numbers
       if (art_dmx->net != art_poll_reply_.net_switch ||
           art_dmx->sub_uni !=
-              (art_poll_reply_.sub_switch << 4u | art_poll_reply_.sw_in[0]) ||
+              (art_poll_reply_.sub_switch << 4u | art_poll_reply_.sw_out[0]) ||
           // The node's data must be within the DMX data, which must be in the
           // packet
           art_dmx->length > 512u ||
