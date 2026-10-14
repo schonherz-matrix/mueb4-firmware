@@ -237,6 +237,10 @@ void Network::StreamTerminated() {
   HAL_NVIC_ClearPendingIRQ(TIM17_IRQn);
   htim17.Instance->EGR = TIM_EGR_UG;
   CLEAR_BIT(htim17.Instance->SR, TIM_SR_UIF);
+  HAL_TIM_Base_Stop_IT(&htim14);
+  HAL_NVIC_ClearPendingIRQ(TIM14_IRQn);
+  htim14.Instance->EGR = TIM_EGR_UG;
+  CLEAR_BIT(htim14.Instance->SR, TIM_SR_UIF);
   sync_timed_out_ = false;
 
   left_panel.Blank();
@@ -480,7 +484,8 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number,
   ReadUdpPayload(socket_number, packet, 0u, buffer);
 
   const auto header{reinterpret_cast<const ArtNetHeader *>(buffer.data())};
-  if (header->art_id_op_code.id != kArtNetId || header->prot_ver != 14u) {
+  // Art-Net 4: only versions lower than 14 are ignored
+  if (header->art_id_op_code.id != kArtNetId || header->prot_ver < 14u) {
     return;
   }
 
@@ -506,10 +511,11 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number,
       if (art_dmx->net != art_poll_reply_.net_switch ||
           art_dmx->sub_uni !=
               (art_poll_reply_.sub_switch << 4u | art_poll_reply_.sw_in[0]) ||
-          art_dmx->length < 2u || art_dmx->length > 512u ||
-          art_dmx->length < 384u ||
-          packet.size <
-              sizeof(ArtDmx) + dmx_buffer_offset_ + kPanelDataSize ||
+          // The node's data must be within the DMX data, which must be in the
+          // packet
+          art_dmx->length > 512u ||
+          art_dmx->length < dmx_buffer_offset_ + kPanelDataSize ||
+          packet.size < sizeof(ArtDmx) + art_dmx->length ||
           (last_ip_address_[0] != 0u &&
            last_ip_address_ != packet.server_address)) {
         return;
