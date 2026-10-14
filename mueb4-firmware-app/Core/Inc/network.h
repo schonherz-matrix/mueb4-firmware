@@ -8,7 +8,9 @@
 #define MUEB4_FIRMWARE_CORE_INC_NETWORK_H_
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <tuple>
 
 #include "art_net.h"
@@ -77,6 +79,16 @@ class Network final {
   /// Bootloader firmware updater Socket number.
   static constexpr std::uint8_t kFirmwareUpdaterSocket{5u};
 
+  /**
+   * Art-Net packets handled in one Step().
+   * Every node receives all broadcast universes, the own packet must not
+   * wait behind the others. Limited so the other sockets aren't starved.
+   */
+  static constexpr std::uint8_t kMaxArtNetPacketsPerStep{8u};
+
+  /// The node's DMX data size, left and right panel.
+  static constexpr std::size_t kPanelDataSize{2u * Panel::kColorDataSize};
+
   Network();
   ~Network() = default;
 
@@ -86,12 +98,27 @@ class Network final {
 
   auto CheckIpAddress(const std::uint8_t &socket_number);
 
-  void SetPanelColorData(const std::array<std::uint8_t, 512u> &dmx_data) const;
+  /// Sets both panels from the node's part of the DMX data.
+  void SetPanelColorData(
+      std::span<const std::uint8_t, kPanelDataSize> panel_data) const;
 
   /// Handles animation protocol.
   void HandleE131Packet(const std::uint8_t &socket_number);
 
-  void HandleArtNetPacket(const std::uint8_t &socket_number);
+  /**
+   * Receives one packet from #kArtNetSocket.
+   * Reads from the W5500 RX buffer directly, only the needed bytes.
+   */
+  void HandleArtNetPacket();
+
+  /**
+   * Handles a received Art-Net packet.
+   * @param data_pointer W5500 RX buffer pointer of the UDP payload
+   * @param size UDP payload size
+   */
+  void ProcessArtNetPacket(const std::uint16_t &data_pointer,
+                           const std::uint16_t &size,
+                           const std::array<std::uint8_t, 4u> &server_address);
 
   /**
    * Handles remote command.

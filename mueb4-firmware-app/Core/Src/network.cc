@@ -16,7 +16,7 @@
 #include <cstring>
 #include <functional>
 #include <iterator>
-#include <ranges>
+#include <span>
 #include <tuple>
 #include <utility>
 
@@ -69,6 +69,18 @@ static bool IsSequenceOutOfOrder(const std::uint8_t &sequence_number,
   return difference <= 0 && difference > -20;
 }
 
+/**
+ * Reads from the socket's W5500 RX buffer at pointer.
+ * Sn_RX_RD isn't changed, the W5500 wraps the pointer in the buffer.
+ */
+static void ReadRxBuffer(const std::uint8_t &socket_number,
+                         const std::uint16_t &pointer,
+                         std::span<std::uint8_t> data) {
+  WIZCHIP_READ_BUF((static_cast<std::uint32_t>(pointer) << 8u) +
+                       (WIZCHIP_RXBUF_BLOCK(socket_number) << 3u),
+                   data.data(), static_cast<std::uint16_t>(data.size()));
+}
+
 Network &Network::Instance() {
   static Network network;
 
@@ -117,8 +129,10 @@ void Network::Step() {
       HandleE131Packet(kE131Socket);
     }
 
-    if (getSn_RX_RSR(kArtNetSocket) > 0u) {
-      HandleArtNetPacket(kArtNetSocket);
+    for (std::uint8_t i{0u};
+         i < kMaxArtNetPacketsPerStep && getSn_RX_RSR(kArtNetSocket) > 0u;
+         i++) {
+      HandleArtNetPacket();
     }
   } else {
     HAL_GPIO_WritePin(LED_JOKER_GPIO_Port, LED_JOKER_Pin, GPIO_PIN_RESET);
@@ -295,19 +309,14 @@ auto Network::CheckIpAddress(const std::uint8_t &socket_number) {
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "readability-convert-member-functions-to-static"
 void Network::SetPanelColorData(
-    const std::array<std::uint8_t, 512u> &dmx_data) const {
+    std::span<const std::uint8_t, kPanelDataSize> panel_data) const {
   HAL_GPIO_WritePin(LED_SERVER_GPIO_Port, LED_SERVER_Pin, GPIO_PIN_SET);
   Panel::SetInternalAnimation(false);
 
   Panel::GetPanel(Panel::Side::LEFT)
-      .SetColorData(std::views::counted(dmx_data.cbegin() + dmx_buffer_offset_,
-                                        Panel::kColorDataSize),
-                    true);
+      .SetColorData(panel_data.first<Panel::kColorDataSize>(), true);
   Panel::GetPanel(Panel::Side::RIGHT)
-      .SetColorData(std::views::counted(dmx_data.cbegin() + dmx_buffer_offset_ +
-                                            Panel::kColorDataSize,
-                                        Panel::kColorDataSize),
-                    true);
+      .SetColorData(panel_data.last<Panel::kColorDataSize>(), true);
 }
 #pragma clang diagnostic pop
 
@@ -392,7 +401,9 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
     synchronization_address_ =
         e131DataPacket->framing_layer.synchronization_address;
 
-    SetPanelColorData(e131DataPacket->dmp_layer.property_values);
+    SetPanelColorData(std::span(e131DataPacket->dmp_layer.property_values)
+                          .subspan(dmx_buffer_offset_)
+                          .first<kPanelDataSize>());
 
     if (synchronization_address_ == 0u) {
       left_panel.SendColorData();
@@ -434,12 +445,45 @@ void Network::HandleE131Packet(const std::uint8_t &socket_number) {
   }
 }
 
-void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
-  const auto [size, buffer, server_address,
-              server_port]{CheckIpAddress(socket_number)};
-  if (size <= 0) {
+void Network::HandleArtNetPacket() {
+  // Not received with recvfrom(): every node gets all broadcast universes,
+  // reading whole packets over SPI would be too slow. Only the headers and
+  // the node's data are read, the rest is released without reading it.
+  // recvfrom() is never called on this socket, its remaining size stays 0.
+  const auto read_pointer{
+      static_cast<std::uint16_t>(getSn_RX_RD(kArtNetSocket))};
+
+  // W5500 UDP packet info: sender IP address, port, payload size
+  std::array<std::uint8_t, 8u> packet_info{};
+  ReadRxBuffer(kArtNetSocket, read_pointer, packet_info);
+  const std::array<std::uint8_t, 4u> server_address{
+      packet_info[0], packet_info[1], packet_info[2], packet_info[3]};
+  const auto size{
+      static_cast<std::uint16_t>(packet_info[6] << 8u | packet_info[7])};
+
+  ProcessArtNetPacket(
+      static_cast<std::uint16_t>(read_pointer + packet_info.size()), size,
+      server_address);
+
+  setSn_RX_RD(kArtNetSocket, static_cast<std::uint16_t>(
+                                 read_pointer + packet_info.size() + size));
+  setSn_CR(kArtNetSocket, Sn_CR_RECV);
+  while (getSn_CR(kArtNetSocket)) {
+  }
+}
+
+void Network::ProcessArtNetPacket(
+    const std::uint16_t &data_pointer, const std::uint16_t &size,
+    const std::array<std::uint8_t, 4u> &server_address) {
+  if (server_address[2] != 0u || size < sizeof(ArtNetHeader)) {
     return;
   }
+
+  // Largest header used, zeroed for shorter packets
+  std::array<std::uint8_t, sizeof(ArtDmx)> buffer{};
+  ReadRxBuffer(
+      kArtNetSocket, data_pointer,
+      std::span(buffer).first(std::min<std::size_t>(size, buffer.size())));
 
   const auto packet{reinterpret_cast<const ArtNetHeader *>(buffer.data())};
   if (packet->art_id_op_code.id != kArtNetId || packet->prot_ver != 14u) {
@@ -468,6 +512,7 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
               (art_poll_reply_.sub_switch << 4u | art_poll_reply_.sw_in[0]) ||
           art_dmx->length < 2u || art_dmx->length > 512u ||
           art_dmx->length < 384u ||
+          size < sizeof(ArtDmx) + dmx_buffer_offset_ + kPanelDataSize ||
           (last_ip_address_[0] != 0u && last_ip_address_ != server_address)) {
         return;
       }
@@ -483,7 +528,12 @@ void Network::HandleArtNetPacket(const std::uint8_t &socket_number) {
       }
       last_ip_address_ = server_address;
 
-      SetPanelColorData(art_dmx->data);
+      std::array<std::uint8_t, kPanelDataSize> panel_data;
+      ReadRxBuffer(kArtNetSocket,
+                   static_cast<std::uint16_t>(data_pointer + sizeof(ArtDmx) +
+                                              dmx_buffer_offset_),
+                   panel_data);
+      SetPanelColorData(panel_data);
 
       if (!synced_) {
         left_panel.SendColorData();

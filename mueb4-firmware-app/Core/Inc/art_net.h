@@ -11,11 +11,10 @@ constexpr std::uint16_t kOpPoll{0x2000u}; /* This is an ArtPoll packet, no other
 data is contained in this UDP packet */
 constexpr std::uint16_t kOpPollReply{0x2100u}; /* This is an ArtPollReply
 Packet. It contains device status information */
-constexpr std::uint16_t kOpOutput{0x5000u}; /* This is an ArtPollReply Packet.
-It contains device status information */
-constexpr std::uint16_t kOpSync{0x5200u};   /* This is an ArtNzs data packet. It
-                              contains non-zero   start code (except RDM) DMX512
-                              information for a   single Universe */
+constexpr std::uint16_t kOpOutput{0x5000u}; /* This is an ArtDmx data packet. It
+contains zero start code DMX512 information for a single Universe. */
+constexpr std::uint16_t kOpSync{0x5200u}; /* This is an ArtSync data packet. It
+is used to force synchronous transfer of ArtDmx packets to a node’s output. */
 
 struct ArtIdOpCode {
   const std::array<std::uint8_t, 8u>
@@ -172,6 +171,7 @@ larger or modular product, this is the IP of the root device */
 
 BOOST_STATIC_ASSERT(sizeof(ArtPollReply) == sizeof(ArtIdOpCode) + 229u);
 
+/// ArtDmx header, the DMX512 data (length bytes) follows it in the packet.
 struct ArtDmx {
   const ArtNetHeader header;
   const std::uint8_t sequence; /* The sequence number is used to ensure that
@@ -196,11 +196,9 @@ This  value should be an even number in the range 2  – 512.  It represents the
 number of DMX512 channels  encoded in packet. NB: Products which convert Art-Net
 to DMX512 may opt to always send 512  channels.  High Byte. Low Byte of above.
 */
-  const std::array<std::uint8_t, 512u> data; /* A variable length array of
-DMX512 lighting data */
 };
 
-BOOST_STATIC_ASSERT(sizeof(ArtDmx) == sizeof(ArtNetHeader) + 518u);
+BOOST_STATIC_ASSERT(sizeof(ArtDmx) == sizeof(ArtNetHeader) + 6u);
 
 struct ArtSync {
   const ArtNetHeader header;
