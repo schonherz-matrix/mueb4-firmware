@@ -495,10 +495,11 @@ void Network::ProcessArtNetPacket(
 
   switch (packet->art_id_op_code.op_code) {
     case kOpPoll: {
+      // Art-Net 4: unicast to the controller, a broadcast would reach every
+      // node's Art-Net socket
       sendto(kArtNetSocket, (std::uint8_t *)&art_poll_reply_,
              sizeof(ArtPollReply),
-             const_cast<std::uint8_t *>(broadcast_ip_address_.data()),
-             kArtNetPort);
+             const_cast<std::uint8_t *>(server_address.data()), kArtNetPort);
       break;
     }
     case kOpOutput: {
