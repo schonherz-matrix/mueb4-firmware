@@ -4,9 +4,9 @@ Firmware for 4th generation MUEB.
 
 ## Prerequisites
 
-[STM32CubeIDE](https://www.st.com/en/development-tools/stm32cubeide.html) 1.9.0+
+[STM32CubeIDE](https://www.st.com/en/development-tools/stm32cubeide.html) 1.19.0+
 
-[Boost](https://www.boost.org/) 1.79.0+, by default outside the repository folder one level up. e.g. "../" or in any location (must be configured in c++ build settings)
+[Boost](https://www.boost.org/) 1.92.0+, by default outside the repository folder one level up. e.g. "../" or in any location (must be configured in c++ build settings)
 
 ## How to import the project
 
@@ -20,9 +20,9 @@ Select all, click Finish.
 
 ### Download ST drivers
 
-Help->Manage embedded software packages.
+Help->Configuration Tool->Manage embedded software packages.
 
-Under **STM32F0**, select **STM32Cube MCU Package for STM32F0 Series** with the **1.11.x version**, click install.
+Under **STM32F0**, select **STM32Cube MCU Package for STM32F0 Series** with the **1.11.6 version**, click install.
 
 ### Generating code
 
@@ -58,4 +58,4 @@ https://www.microchip.com/wwwproducts/en/24AA02E48
 
 [sACN, E1.31 2018](https://tsp.esta.org/tsp/documents/docs/ANSI_E1-31-2018.pdf)
 
-[Art-Net](https://www.artisticlicence.com/WebSiteMaster/User%20Guides/art-net.pdf), Art-Net™ Designed by and Copyright Artistic Licence Holdings Ltd.
+[Art-Net 4](https://art-net.org.uk/downloads/art-net.pdf), Art-Net™ Designed by and Copyright Artistic Licence Holdings Ltd.
