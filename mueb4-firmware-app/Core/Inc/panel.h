@@ -8,9 +8,7 @@
 #define MUEB4_FIRMWARE_CORE_INC_PANEL_H_
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
-#include <ranges>
 #include <span>
 
 #include "main.h"

@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <tuple>
 
 #include "art_net.h"
 #include "panel.h"

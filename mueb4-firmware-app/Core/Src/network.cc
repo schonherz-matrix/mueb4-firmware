@@ -15,17 +15,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
-#include <cstring>
-#include <functional>
 #include <iterator>
 #include <span>
-#include <tuple>
-#include <utility>
 
 #include "command.h"
 #include "crc.h"
 #include "e131.h"
-#include "gpio.h"
 #include "i2c.h"
 #include "main.h"
 #include "tim.h"
