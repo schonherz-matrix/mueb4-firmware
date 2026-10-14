@@ -259,9 +259,12 @@ Network::Network() {
   reg_dhcp_cbfunc(CIpAssign, CIpUpdate, CIpConflict);
 
   // DHCP, command protocol, E1.31 data/sync, E1.31 sync,
-  // Art-Net, bootloader firmware rx/tx sizes
+  // Art-Net, bootloader firmware rx/tx sizes in KB, max 16 KB each.
+  // Art-Net gets every broadcast universe, 8 KB holds about 3 frames of 5
+  // universes. E1.31 data and sync sockets get 1 universe, 2 KB holds 3
+  // packets.
   std::array<std::uint8_t, 8u> tx_size{1u, 1u, 1u, 1u, 1u, 1u, 0u, 0u};
-  std::array<std::uint8_t, 8u> rx_size{1u, 1u, 4u, 4u, 4u, 2u, 0u, 0u};
+  std::array<std::uint8_t, 8u> rx_size{1u, 1u, 2u, 2u, 8u, 2u, 0u, 0u};
 
   // This includes soft reset
   wizchip_init(tx_size.data(), rx_size.data());
