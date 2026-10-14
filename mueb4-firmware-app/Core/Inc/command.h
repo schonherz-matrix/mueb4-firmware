@@ -2,7 +2,7 @@
 #define MUEB4_FIRMWARE_CORE_INC_COMMAND_H_
 
 #include <array>
-#include <boost/endian.hpp>
+#include <boost/static_assert.hpp>
 #include <cstdint>
 
 constexpr std::array<std::uint8_t, 4u> kCommandId{"SEM"};

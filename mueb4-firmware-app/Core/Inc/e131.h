@@ -3,6 +3,7 @@
 
 #include <array>
 #include <boost/endian.hpp>
+#include <boost/static_assert.hpp>
 #include <cstdint>
 
 constexpr std::uint32_t VECTOR_ROOT_E131_DATA{0x00000004u};

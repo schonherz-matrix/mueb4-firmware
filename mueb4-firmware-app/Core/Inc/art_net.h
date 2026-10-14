@@ -3,6 +3,7 @@
 
 #include <array>
 #include <boost/endian.hpp>
+#include <boost/static_assert.hpp>
 #include <cstdint>
 
 constexpr std::uint16_t kArtNetPort{0x1936u};
